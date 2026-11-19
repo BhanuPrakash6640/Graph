@@ -5,6 +5,8 @@ data:
 
 models:
   - evolvegcn
+  - evolvegcn_frozen
+  - gcn
 
 feature_sets:
   - local
@@ -24,14 +26,14 @@ refit_splits:
 seeds: [0, 1, 2, 3, 4]
 
 training:
-  max_epochs: 150
-  early_stopping_patience: 30
+  max_epochs: 200
+  early_stopping_patience: 40
   window_size: 5
   weight_decay: 0.0005
   device: cuda
 
 hpo:
-  hidden_channels: [64]
-  dropout: [0.3]
+  hidden_channels: [64, 128]
+  dropout: [0.3, 0.5]
   lr: [0.001, 0.005]
 

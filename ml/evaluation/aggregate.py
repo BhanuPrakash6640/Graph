@@ -155,12 +155,12 @@ def generate_tables(runs: list[dict[str, Any]], out_dir: str | Path = "reports/t
     sum_df.to_csv(csv_file, index=False)
     sum_df.to_markdown(md_file, index=False)
 
-    has_temporal = any(m.lower() in ("evolvegcn", "control_b") for m in df["model"].unique())
+    has_temporal = any(m.lower() in ("evolvegcn", "control_b", "evolvegcn_frozen") for m in df["model"].unique())
     if has_temporal:
         temp_csv = out_path / "exp2_temporal.csv"
         temp_md = out_path / "exp2_temporal.md"
-        # Extract static GCN (Control A), EvolveGCN-O, and Control B
-        temp_df = sum_df[sum_df["model"].str.lower().isin(["gcn", "evolvegcn", "control_b"])].copy()
+        # Extract static GCN (Control A), EvolveGCN-O, Control B, and EvolveGCN-Frozen
+        temp_df = sum_df[sum_df["model"].str.lower().isin(["gcn", "evolvegcn", "control_b", "evolvegcn_frozen"])].copy()
         temp_df.to_csv(temp_csv, index=False)
         temp_df.to_markdown(temp_md, index=False)
 

@@ -242,10 +242,22 @@ def get_comparisons(suite: str = "exp1") -> list[dict[str, Any]]:
         return [
             # --- Exp 2 Temporal Comparisons ---
             {
+                "name": "Static GCN vs EvolveGCN-Frozen (all features)",
+                "split": "paper_refit",
+                "cfg_a": {"model": "gcn", "feature_set": "all"},
+                "cfg_b": {"model": "evolvegcn_frozen", "feature_set": "all"},
+            },
+            {
                 "name": "Static GCN vs EvolveGCN-O (all features)",
                 "split": "paper_refit",
                 "cfg_a": {"model": "gcn", "feature_set": "all"},
                 "cfg_b": {"model": "evolvegcn", "feature_set": "all"},
+            },
+            {
+                "name": "EvolveGCN-O vs EvolveGCN-Frozen (all features)",
+                "split": "paper_refit",
+                "cfg_a": {"model": "evolvegcn", "feature_set": "all"},
+                "cfg_b": {"model": "evolvegcn_frozen", "feature_set": "all"},
             },
             {
                 "name": "Static GCN vs Control B (all features)",
