@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 include = ["ml*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "backend/tests"]
 pythonpath = ["."]
 
 [tool.ruff]
