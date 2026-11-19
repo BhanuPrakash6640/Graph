@@ -92,7 +92,9 @@ def generate_tables(runs: list[dict[str, Any]], out_dir: str | Path = "reports/t
         t_05 = met.get("test_at_05") or met.get("at_05") or {}
         inf = tim.get("inference") or tim.get("inference_latency") or {}
 
+        exp_name = cfg.get("experiment") or r["run_dir"].parent.name
         rows.append({
+            "experiment": exp_name,
             "model": cfg.get("model"),
             "split": cfg.get("split"),
             "feature_set": cfg.get("feature_set"),
@@ -159,8 +161,45 @@ def generate_tables(runs: list[dict[str, Any]], out_dir: str | Path = "reports/t
     if has_temporal:
         temp_csv = out_path / "exp2_temporal.csv"
         temp_md = out_path / "exp2_temporal.md"
-        # Extract static GCN (Control A), EvolveGCN-O, Control B, and EvolveGCN-Frozen
-        temp_df = sum_df[sum_df["model"].str.lower().isin(["gcn", "evolvegcn", "control_b", "evolvegcn_frozen"])].copy()
+        
+        # In Exp 2 table, use only exp2_temporal runs (5 seeds), not 10 for GCN
+        df_temp_subset = df[
+            (df["experiment"] == "exp2_temporal")
+            | (df["model"].str.lower().isin(["evolvegcn", "control_b", "evolvegcn_frozen"]))
+        ].copy()
+        
+        grouped_temp = df_temp_subset.groupby(["split", "model", "feature_set"], sort=False)
+        temp_summary_rows = []
+        for (split, model, featset), grp in grouped_temp:
+            n_seeds = len(grp)
+            def _fmt_t(col: str, decimals: int = 3) -> str:
+                vals = grp[col].dropna()
+                if len(vals) == 0:
+                    return "N/A"
+                if len(vals) == 1:
+                    return f"{vals.iloc[0]:.{decimals}f}"
+                mean = vals.mean()
+                std = vals.std()
+                return f"{mean:.{decimals}f} ± {std:.{decimals}f}"
+
+            temp_summary_rows.append({
+                "split": split,
+                "model": model.upper(),
+                "feature_set": featset,
+                "n_seeds": n_seeds,
+                "pr_auc": _fmt_t("pr_auc", 4),
+                "f1 (val thr)": _fmt_t("f1_opt", 4),
+                "f1 (0.5)": _fmt_t("f1_05", 4),
+                "precision": _fmt_t("precision_opt", 4),
+                "recall": _fmt_t("recall_opt", 4),
+                "roc_auc": _fmt_t("roc_auc", 4),
+                "val_threshold": _fmt_t("threshold", 3),
+                "train_time_s": _fmt_t("train_time_s", 2),
+                "node_p50_ms": _fmt_t("node_p50_ms", 4),
+                "peak_mem_mb": _fmt_t("peak_memory_mb", 1),
+            })
+
+        temp_df = pd.DataFrame(temp_summary_rows)
         temp_df.to_csv(temp_csv, index=False)
         temp_df.to_markdown(temp_md, index=False)
 

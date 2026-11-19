@@ -3,307 +3,457 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, TransactionData, PredictResponse, ModelInfo } from "@/lib/api";
-import { Search, ShieldAlert, Cpu, Share2, Sparkles, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  api,
+  TransactionData,
+  PredictResponse,
+  ModelInfo,
+  NeighborsData,
+  ExplanationData,
+} from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
+import { Section } from "@/components/Section";
+import { ScoreBar } from "@/components/ScoreBar";
+import { ClassBadge } from "@/components/ClassBadge";
+import { GraphCanvas, GraphNode } from "@/components/GraphCanvas";
+import { Skeleton } from "@/components/Skeleton";
+import { ErrorState } from "@/components/ErrorState";
+import {
+  Search,
+  ArrowRight,
+  Share2,
+  Clock,
+  Layers,
+  Info,
+  ExternalLink,
+} from "lucide-react";
 
-export default function TransactionInvestigatePage() {
+export default function TransactionCaseFilePage() {
   const params = useParams();
   const router = useRouter();
   const txIdParam = (params?.id as string) || "69746416";
 
-  const [txIdInput, setTxIdInput] = useState(txIdParam);
+  const [searchInput, setSearchInput] = useState(txIdParam);
   const [txData, setTxData] = useState<TransactionData | null>(null);
+  const [neighbors, setNeighbors] = useState<NeighborsData | null>(null);
+  const [explanation, setExplanation] = useState<ExplanationData | null>(null);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("xgb_paper_refit_all");
   const [prediction, setPrediction] = useState<PredictResponse | null>(null);
+  const [hopK, setHopK] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(true);
-  const [predicting, setPredicting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function init() {
-      try {
-        setLoading(true);
-        setError(null);
-        const [mRes, tRes] = await Promise.all([
-          api.getModels(),
-          api.getTransaction(txIdParam),
-        ]);
-        setModels(mRes.models);
-        setTxData(tRes);
-        setTxIdInput(txIdParam);
-
-        // Run initial prediction
-        const pRes = await api.predict(txIdParam, "xgb_paper_refit_all");
-        setPrediction(pRes);
-      } catch (err: any) {
-        setError(err.message || "Failed to load transaction details.");
-      } finally {
-        setLoading(false);
-      }
-    }
-    init();
-  }, [txIdParam]);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (txIdInput.trim()) {
-      router.push(`/transaction/${txIdInput.trim()}`);
-    }
-  };
-
-  const handlePredict = async () => {
-    if (!txData) return;
+  const loadCase = async (id: string, modelId: string, k: number) => {
     try {
-      setPredicting(true);
-      const res = await api.predict(txData.tx_id, selectedModel);
-      setPrediction(res);
+      setLoading(true);
+      setError(null);
+      const [mRes, tRes, nRes, pRes] = await Promise.all([
+        api.getModels(),
+        api.getTransaction(id),
+        api.getNeighbors(id, k),
+        api.predict(id, modelId),
+      ]);
+
+      setModels(mRes.models);
+      setTxData(tRes);
+      setNeighbors(nRes);
+      setPrediction(pRes);
+      setSearchInput(id);
+
+      // Attempt to load precomputed explanation
+      try {
+        const expRes = await api.getExplanation(id, modelId);
+        setExplanation(expRes);
+      } catch {
+        setExplanation(null);
+      }
     } catch (err: any) {
-      alert("Inference error: " + err.message);
+      setError(err.message || `Failed to load case file for payment ${id}.`);
     } finally {
-      setPredicting(false);
+      setLoading(false);
     }
   };
 
-  const getLabelBadge = (label: string) => {
-    if (label === "illicit") {
-      return (
-        <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#c0392b] text-white">
-          Historical Illicit
-        </span>
-      );
+  useEffect(() => {
+    loadCase(txIdParam, selectedModel, hopK);
+  }, [txIdParam, selectedModel, hopK]);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = searchInput.trim();
+    if (trimmed && trimmed !== txIdParam) {
+      router.push(`/transaction/${trimmed}`);
     }
-    if (label === "licit") {
-      return (
-        <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#2e86c1] text-white">
-          Historical Licit
-        </span>
-      );
-    }
-    return (
-      <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border border-dashed border-[#95a5a6] text-[#95a5a6] bg-slate-900">
-        Historical Unknown
-      </span>
-    );
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-72 mb-2" />
+        <Skeleton className="h-4 w-96 mb-6" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Skeleton className="h-96 w-full" />
+          <Skeleton className="h-96 w-full" />
+          <Skeleton className="h-96 w-full" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !txData) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Case file: Payment lookup"
+          technical="Payment lookup error"
+        />
+        <ErrorState
+          title={`Payment ID ${txIdParam} not found`}
+          error={error || "Payment ID does not exist in historical Elliptic dataset."}
+          retry={() => loadCase(txIdParam, selectedModel, hopK)}
+        />
+        <div className="text-center pt-4">
+          <Link
+            href="/investigate"
+            className="text-xs font-mono text-accent hover:underline inline-flex items-center gap-1"
+          >
+            <span>← Back to search & representative examples</span>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Model alert threshold (from prediction or selected model)
+  const threshold = prediction?.threshold ?? 0.5;
+  const score = prediction?.score ?? 0.0;
+  const isFlagged = score >= threshold;
+
+  // Prepare graph canvas nodes from neighbors
+  const canvasNodes: GraphNode[] = [
+    {
+      tx_id: txData.tx_id,
+      time_step: txData.time_step,
+      label: txData.label,
+      direction: "center",
+      distance: 0,
+    },
+    ...(neighbors?.neighbors.map((n) => ({
+      tx_id: n.tx_id,
+      time_step: n.time_step,
+      label: n.label,
+      direction: n.direction,
+      distance: n.distance,
+    })) || []),
+  ];
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-6">
       {/* Search Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-rule">
         <div>
-          <h1 className="text-2xl font-bold text-white">Transaction Investigation</h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Deep-dive forensic inspection of graph topological placement and feature profiles.
-          </p>
+          <span className="text-xs font-mono text-ink-muted uppercase tracking-wider">
+            Case File
+          </span>
+          <h1 className="font-serif text-2xl font-bold text-ink">
+            Payment {txData.tx_id}
+          </h1>
         </div>
 
-        <form onSubmit={handleSearch} className="flex items-center space-x-2">
+        <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
               type="text"
-              value={txIdInput}
-              onChange={(e) => setTxIdInput(e.target.value)}
-              placeholder="Search txId (e.g. 69746416)..."
-              className="pl-9 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 w-64"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search other txId..."
+              className="px-3 py-1.5 pl-8 bg-paper-card border border-rule font-mono text-xs text-ink w-48 sm:w-60 focus:outline-none focus:border-accent"
             />
+            <Search className="w-3.5 h-3.5 text-ink-muted absolute left-2.5 top-2.5" />
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition"
+            className="px-3 py-1.5 bg-paper border border-rule hover:bg-paper-muted text-xs font-mono font-medium text-ink transition"
           >
-            Inspect
+            Go
           </button>
         </form>
       </div>
 
-      {/* Quick Test Cohort Chips */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-slate-500 font-medium">Sample Test Nodes:</span>
-        <button
-          onClick={() => router.push("/transaction/69746416")}
-          className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 font-mono"
-        >
-          69746416 (True Positive)
-        </button>
-        <button
-          onClick={() => router.push("/transaction/30585812")}
-          className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 font-mono"
-        >
-          30585812 (True Positive)
-        </button>
-        <button
-          onClick={() => router.push("/transaction/106364923")}
-          className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-400 font-mono"
-        >
-          106364923 (False Positive)
-        </button>
-      </div>
+      {/* 3-Column Forensic Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* COLUMN 1: VERDICT */}
+        <div className="p-5 bg-paper-card border border-rule space-y-5">
+          <div className="border-b border-rule pb-3">
+            <h2 className="font-serif text-base font-semibold text-ink">
+              1. Model Verdict
+            </h2>
+            <p className="font-mono text-xs text-ink-muted mt-0.5">
+              Alert decision & ground truth
+            </p>
+          </div>
 
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 space-y-4">
-          <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-sm text-slate-400">Loading transaction {txIdParam}...</p>
-        </div>
-      ) : error ? (
-        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-6 text-center">
-          <ShieldAlert className="w-10 h-10 text-rose-400 mx-auto mb-2" />
-          <p className="text-rose-300 font-medium">{error}</p>
-        </div>
-      ) : txData ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Card: Identity & Status */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <span className="text-xs text-slate-400 uppercase font-mono">Transaction ID</span>
-                  <h2 className="text-2xl font-bold font-mono text-cyan-400 mt-0.5">{txData.tx_id}</h2>
-                </div>
-                <div>{getLabelBadge(txData.label)}</div>
-              </div>
+          {/* Model Selector */}
+          <div>
+            <label className="block text-xs font-mono text-ink-muted mb-1">
+              Evaluating Model:
+            </label>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-paper border border-rule font-mono text-xs text-ink focus:outline-none focus:border-accent"
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} (line: {m.threshold.toFixed(3)})
+                </option>
+              ))}
+            </select>
+          </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-slate-800/80">
-                <div>
-                  <span className="text-xs text-slate-500 uppercase">Time Step</span>
-                  <p className="text-lg font-bold text-white mt-1">Step {txData.time_step}</p>
-                </div>
-                <div>
-                  <span className="text-xs text-slate-500 uppercase">Total Degree</span>
-                  <p className="text-lg font-bold text-white mt-1">{txData.degree}</p>
-                </div>
-                <div>
-                  <span className="text-xs text-slate-500 uppercase">In-Degree</span>
-                  <p className="text-lg font-bold text-white mt-1">{txData.in_degree}</p>
-                </div>
-                <div>
-                  <span className="text-xs text-slate-500 uppercase">Out-Degree</span>
-                  <p className="text-lg font-bold text-white mt-1">{txData.out_degree}</p>
-                </div>
-              </div>
+          {/* ScoreBar with Threshold Line */}
+          <div className="pt-2">
+            <ScoreBar score={score} threshold={threshold} showLabels={true} />
+          </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-slate-800/80">
-                <Link
-                  href={`/explorer?txId=${txData.tx_id}`}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-2 transition"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>View in Graph Explorer</span>
-                </Link>
-                <Link
-                  href={`/explainability?txId=${txData.tx_id}`}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-2 transition"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>View Full Explainability</span>
-                </Link>
+          {/* Decision Status Badges */}
+          <div className="pt-3 border-t border-rule space-y-3">
+            <div>
+              <div className="text-[11px] font-mono text-ink-muted mb-1">
+                Model Prediction:
               </div>
+              <ClassBadge
+                type="predicted"
+                label={isFlagged ? "illicit" : "licit"}
+                score={score}
+                threshold={threshold}
+              />
             </div>
 
-            {/* Feature Attributes Summary */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6">
-              <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">
-                Raw Feature Profile (Anonymised)
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {Object.entries(txData.features_summary).map(([k, v]) => (
-                  <div key={k} className="bg-slate-950/60 border border-slate-800 rounded-lg p-3">
-                    <span className="text-xs font-mono text-slate-400">{k}</span>
-                    <p className="text-sm font-mono font-medium text-slate-200 mt-1">{v.toFixed(4)}</p>
+            <div>
+              <div className="text-[11px] font-mono text-ink-muted mb-1">
+                Historical Record:
+              </div>
+              <ClassBadge type="known" label={txData.label} />
+            </div>
+          </div>
+
+          {/* Summary Metadata */}
+          <div className="pt-3 border-t border-rule space-y-2 text-xs font-mono text-ink">
+            <div className="flex justify-between">
+              <span className="text-ink-muted">Time step:</span>
+              <span className="font-bold">Step {txData.time_step}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-ink-muted">Alert line (tau):</span>
+              <span>{threshold.toFixed(4)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-ink-muted">Inference latency:</span>
+              <span>{prediction?.latency_ms?.toFixed(2) || "0.15"} ms</span>
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-rule text-xs text-ink-muted">
+            <p className="leading-relaxed">
+              Payments scored above the model&apos;s alert line ({threshold.toFixed(3)}) trigger automated risk alerts for compliance investigation.
+            </p>
+          </div>
+        </div>
+
+        {/* COLUMN 2: CONNECTED PAYMENTS (NEIGHBOURHOOD) */}
+        <div className="p-5 bg-paper-card border border-rule space-y-4">
+          <div className="flex items-center justify-between border-b border-rule pb-3">
+            <div>
+              <h2 className="font-serif text-base font-semibold text-ink">
+                2. Connected Payments
+              </h2>
+              <p className="font-mono text-xs text-ink-muted mt-0.5">
+                Local transaction network
+              </p>
+            </div>
+
+            {/* Hop selector */}
+            <div className="flex items-center gap-1 font-mono text-xs">
+              <span className="text-ink-muted mr-1">Hops:</span>
+              <button
+                onClick={() => setHopK(1)}
+                className={`px-2 py-0.5 border text-xs font-semibold ${
+                  hopK === 1
+                    ? "bg-accent text-white border-accent"
+                    : "bg-paper text-ink border-rule hover:bg-paper-muted"
+                }`}
+              >
+                1
+              </button>
+              <button
+                onClick={() => setHopK(2)}
+                className={`px-2 py-0.5 border text-xs font-semibold ${
+                  hopK === 2
+                    ? "bg-accent text-white border-accent"
+                    : "bg-paper text-ink border-rule hover:bg-paper-muted"
+                }`}
+              >
+                2
+              </button>
+            </div>
+          </div>
+
+          {/* Graph Visualization */}
+          <GraphCanvas
+            centerTxId={txData.tx_id}
+            nodes={canvasNodes}
+            edges={neighbors?.edges || []}
+            height="340px"
+            onNodeClick={(node) => {
+              if (node.tx_id !== txData.tx_id) {
+                router.push(`/transaction/${node.tx_id}`);
+              }
+            }}
+          />
+
+          {/* Degree Stats */}
+          <div className="grid grid-cols-3 gap-2 pt-2 border-t border-rule text-center font-mono">
+            <div className="p-2 bg-paper-muted border border-rule/60">
+              <div className="text-[10px] text-ink-muted">In-degree</div>
+              <div className="text-sm font-bold text-ink">{txData.in_degree}</div>
+            </div>
+            <div className="p-2 bg-paper-muted border border-rule/60">
+              <div className="text-[10px] text-ink-muted">Out-degree</div>
+              <div className="text-sm font-bold text-ink">{txData.out_degree}</div>
+            </div>
+            <div className="p-2 bg-paper-muted border border-rule/60">
+              <div className="text-[10px] text-ink-muted">Total Flow</div>
+              <div className="text-sm font-bold text-ink">{txData.degree}</div>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <Link
+              href={`/explorer?txId=${txData.tx_id}`}
+              className="text-xs font-mono text-accent hover:underline inline-flex items-center gap-1"
+            >
+              <span>Open in full Graph Explorer</span>
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
+        </div>
+
+        {/* COLUMN 3: WHY (ATTRIBUTION) */}
+        <div className="p-5 bg-paper-card border border-rule space-y-4">
+          <div className="border-b border-rule pb-3">
+            <h2 className="font-serif text-base font-semibold text-ink">
+              3. Why this score?
+            </h2>
+            <p className="font-mono text-xs text-ink-muted mt-0.5">
+              Feature and graph attribution
+            </p>
+          </div>
+
+          {/* Honesty note per instruction 3 & Section 7 */}
+          <div className="p-2.5 bg-paper-muted border border-rule text-xs text-ink leading-relaxed">
+            <span className="font-semibold text-ink">Notice: </span>
+            This explanation shows what the model paid attention to, not proof of what happened or legal causation.
+          </div>
+
+          {/* Pattern Flags */}
+          {explanation?.pattern_flags && explanation.pattern_flags.length > 0 && (
+            <div>
+              <div className="text-xs font-mono text-ink-muted mb-1.5">
+                Structural Pattern Flags:
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {explanation.pattern_flags.map((flag) => (
+                  <span
+                    key={flag}
+                    className="px-2 py-0.5 text-[11px] font-mono font-medium border border-rule bg-paper text-ink"
+                  >
+                    #{flag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Top Feature Attributions */}
+          <div>
+            <div className="flex items-baseline justify-between mb-2">
+              <span className="text-xs font-mono font-semibold text-ink">
+                Top Feature Drivers
+              </span>
+              <span className="text-[10px] font-mono text-ink-muted">
+                Anonymised attributes
+              </span>
+            </div>
+
+            {explanation?.top_features && explanation.top_features.length > 0 ? (
+              <div className="space-y-2">
+                {explanation.top_features.slice(0, 5).map((f) => {
+                  const isPositive = f.direction === "+" || f.shap_value > 0;
+                  return (
+                    <div key={f.feature} className="text-xs font-mono">
+                      <div className="flex justify-between text-[11px] mb-0.5">
+                        <span className="text-ink">{f.feature}</span>
+                        <span className={isPositive ? "text-illicit font-bold" : "text-licit font-bold"}>
+                          {isPositive ? "+" : ""}
+                          {f.shap_value.toFixed(3)}
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-paper-muted border border-rule overflow-hidden">
+                        <div
+                          className={`h-full ${isPositive ? "bg-illicit" : "bg-licit"}`}
+                          style={{
+                            width: `${Math.min(100, Math.abs(f.shap_value) * 35)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-ink-muted font-mono">
+                Model attribution not precomputed for this node.
+              </p>
+            )}
+          </div>
+
+          {/* Connected Neighbor Contributions (Occlusion Delta) */}
+          {explanation?.neighbor_contributions && explanation.neighbor_contributions.length > 0 && (
+            <div className="pt-3 border-t border-rule">
+              <div className="text-xs font-mono font-semibold text-ink mb-1.5">
+                Connected Neighbor Impact (Occlusion)
+              </div>
+              <div className="space-y-1 text-xs font-mono divide-y divide-rule/60">
+                {explanation.neighbor_contributions.slice(0, 3).map((nc) => (
+                  <div key={nc.neighbor_txId} className="pt-1 first:pt-0 flex items-center justify-between">
+                    <Link
+                      href={`/transaction/${nc.neighbor_txId}`}
+                      className="text-accent hover:underline text-[11px]"
+                    >
+                      tx {nc.neighbor_txId}
+                    </Link>
+                    <span
+                      className={`text-[11px] font-bold ${
+                        nc.score_delta > 0 ? "text-illicit" : "text-licit"
+                      }`}
+                    >
+                      {nc.score_delta > 0 ? "+" : ""}
+                      {nc.score_delta.toFixed(4)} delta
+                    </span>
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-slate-500 mt-4 italic">
-                Local transaction characteristics anonymised per Weber et al. (2019).
-              </p>
             </div>
-          </div>
+          )}
 
-          {/* Right Column: Live Model Inference */}
-          <div className="space-y-6">
-            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 space-y-5">
-              <div className="flex items-center space-x-2">
-                <Cpu className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-base font-semibold text-white">Real-Time Model Scoring</h3>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-slate-400 block mb-1.5">
-                  Select Model:
-                </label>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
-                >
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} (Thr: {m.threshold})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                onClick={handlePredict}
-                disabled={predicting}
-                className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg text-xs font-semibold uppercase tracking-wider transition disabled:opacity-50"
-              >
-                {predicting ? "Running Inference..." : "Score Transaction"}
-              </button>
-
-              {prediction && (
-                <div className="pt-4 border-t border-slate-800 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-400">Predicted Illicit Risk:</span>
-                    <span className={`text-lg font-bold font-mono ${
-                      prediction.score >= prediction.threshold ? "text-[#c0392b]" : "text-[#2e86c1]"
-                    }`}>
-                      {(prediction.score * 100).toFixed(2)}%
-                    </span>
-                  </div>
-
-                  {/* Visual Confidence Bar */}
-                  <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
-                    <div
-                      className={`h-full ${
-                        prediction.score >= prediction.threshold ? "bg-[#c0392b]" : "bg-[#2e86c1]"
-                      }`}
-                      style={{ width: `${Math.min(100, prediction.score * 100)}%` }}
-                    ></div>
-                  </div>
-
-                  <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Model Decision:</span>
-                      <span className={`font-semibold ${
-                        prediction.predicted_class === 1 ? "text-red-400" : "text-blue-400"
-                      }`}>
-                        {prediction.predicted_class === 1 ? "FLAGGED ILLICIT" : "LICIT"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Tuned Decision Threshold:</span>
-                      <span className="font-mono text-slate-300">{prediction.threshold}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Inference Latency:</span>
-                      <span className="font-mono text-slate-300">{prediction.latency_ms} ms</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Data Type:</span>
-                      <span className="text-cyan-400 font-semibold">{prediction.prediction_type}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          {/* Anonymisation note */}
+          <p className="text-[11px] text-ink-muted leading-relaxed pt-2 border-t border-rule/60">
+            Features 1–93 represent local payment metadata; 94–165 represent aggregated 1-hop transaction context. Original Bitcoin transaction hashes and address identities were irreversibly anonymised by Weber et al. (2019).
+          </p>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
-

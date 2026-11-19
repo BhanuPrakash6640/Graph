@@ -123,3 +123,18 @@ class InferenceLogItem(BaseModel):
 
 class InferenceLogResponse(BaseModel):
     logs: list[InferenceLogItem]
+
+
+class ExampleItem(BaseModel):
+    category: str  # "True Positive", "False Positive", "False Negative", "Unknown"
+    tx_id: str
+    score: float
+    true_label: int  # 1, 0, -1
+    label_name: str  # "Illicit", "Licit", "Unknown"
+    time_step: int
+    description: str
+
+
+class ExamplesResponse(BaseModel):
+    examples: list[ExampleItem]
+    disclaimer: str

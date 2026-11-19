@@ -141,3 +141,14 @@ def test_inference_log(client: TestClient):
     logs = resp.json()["logs"]
     assert len(logs) >= 1
     assert logs[0]["tx_id"] == "69746416"
+
+
+def test_examples(client: TestClient):
+    resp = client.get("/api/examples")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "examples" in data
+    assert len(data["examples"]) >= 3
+    categories = [e["category"] for e in data["examples"]]
+    assert "True Positive" in categories
+    assert "False Positive" in categories

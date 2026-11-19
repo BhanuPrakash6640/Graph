@@ -150,9 +150,25 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export interface ExampleItem {
+  category: string;
+  tx_id: string;
+  score: number;
+  true_label: number;
+  label_name: string;
+  time_step: number;
+  description: string;
+}
+
+export interface ExamplesData {
+  examples: ExampleItem[];
+  disclaimer: string;
+}
+
 export const api = {
   getHealth: () => fetchJson<HealthData>("/api/health"),
   getModels: () => fetchJson<{ models: ModelInfo[] }>("/api/models"),
+  getExamples: () => fetchJson<ExamplesData>("/api/examples"),
   predict: (tx_id: string, model_id: string = "xgb_paper_refit_all") =>
     fetchJson<PredictResponse>("/api/predict", {
       method: "POST",

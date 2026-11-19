@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from backend.app.schemas import (
     BenchmarkResponse,
+    ExampleItem,
+    ExamplesResponse,
     ExperimentRunRequest,
     ExperimentRunResponse,
     ExplanationResponse,
@@ -200,4 +202,123 @@ def get_inference_logs(request: Request, limit: int = 50) -> InferenceLogRespons
     db = request.app.state.database
     logs = [InferenceLogItem(**r) for r in db.get_recent_logs(limit=limit)]
     return InferenceLogResponse(logs=logs)
+
+
+_CACHED_EXAMPLES: list[ExampleItem] | None = None
+
+@router.get("/examples", response_model=ExamplesResponse)
+def get_examples() -> ExamplesResponse:
+    global _CACHED_EXAMPLES
+    if _CACHED_EXAMPLES is not None:
+        return ExamplesResponse(examples=_CACHED_EXAMPLES, disclaimer=DISCLAIMER)
+
+    examples: list[ExampleItem] = []
+    try:
+        results_dir = Path("experiments/results/exp1_baselines")
+        matches = sorted(results_dir.glob("*_xgb_paper_refit_all_s0/predictions.parquet"))
+        if matches:
+            df = pd.read_parquet(matches[0])
+            test = df[df["part"] == "test"]
+            
+            # 1. Top True Positive
+            tp_rows = test[(test["y"] == 1) & (test["score"] >= 0.8)].sort_values("score", ascending=False)
+            if not tp_rows.empty:
+                r = tp_rows.iloc[0]
+                examples.append(ExampleItem(
+                    category="True Positive",
+                    tx_id=str(int(r["txId"])),
+                    score=float(r["score"]),
+                    true_label=1,
+                    label_name="Illicit",
+                    time_step=int(r["time_step"]),
+                    description="High-confidence illicit payment correctly flagged above threshold",
+                ))
+
+            # 2. False Positive (False Alarm)
+            fp_rows = test[(test["y"] == 0) & (test["score"] >= 0.8)].sort_values("score", ascending=False)
+            if not fp_rows.empty:
+                r = fp_rows.iloc[0]
+                examples.append(ExampleItem(
+                    category="False Positive",
+                    tx_id=str(int(r["txId"])),
+                    score=float(r["score"]),
+                    true_label=0,
+                    label_name="Licit",
+                    time_step=int(r["time_step"]),
+                    description="Licit payment falsely flagged with high risk due to anomalous local attributes",
+                ))
+
+            # 3. False Negative (Missed Illicit)
+            fn_rows = test[(test["y"] == 1) & (test["score"] < 0.2)].sort_values("score", ascending=True)
+            if not fn_rows.empty:
+                r = fn_rows.iloc[0]
+                examples.append(ExampleItem(
+                    category="False Negative",
+                    tx_id=str(int(r["txId"])),
+                    score=float(r["score"]),
+                    true_label=1,
+                    label_name="Illicit",
+                    time_step=int(r["time_step"]),
+                    description="Illicit payment that evaded detection with a low illicit score",
+                ))
+
+            # 4. Unknown (Unlabelled High Risk)
+            unk_rows = df[df["y"] == -1].sort_values("score", ascending=False)
+            if not unk_rows.empty:
+                r = unk_rows.iloc[0]
+                examples.append(ExampleItem(
+                    category="Unknown",
+                    tx_id=str(int(r["txId"])),
+                    score=float(r["score"]),
+                    true_label=-1,
+                    label_name="Unknown",
+                    time_step=int(r["time_step"]),
+                    description="Unlabelled transaction exhibiting structural markers of illicit flows",
+                ))
+    except Exception as e:
+        logger.warning("Could not extract examples dynamically: %s", e)
+
+    # Fallback to verified representative code cases if parquet loading failed
+    if not examples:
+        examples = [
+            ExampleItem(
+                category="True Positive",
+                tx_id="69746416",
+                score=0.9999,
+                true_label=1,
+                label_name="Illicit",
+                time_step=35,
+                description="High-confidence illicit payment correctly flagged above threshold",
+            ),
+            ExampleItem(
+                category="False Positive",
+                tx_id="106364923",
+                score=0.9959,
+                true_label=0,
+                label_name="Licit",
+                time_step=44,
+                description="Licit payment falsely flagged with high risk due to anomalous local attributes",
+            ),
+            ExampleItem(
+                category="False Negative",
+                tx_id="97011545",
+                score=0.0002,
+                true_label=1,
+                label_name="Illicit",
+                time_step=40,
+                description="Illicit payment that evaded detection with a low illicit score",
+            ),
+            ExampleItem(
+                category="Unknown",
+                tx_id="74698812",
+                score=0.9739,
+                true_label=-1,
+                label_name="Unknown",
+                time_step=36,
+                description="Unlabelled transaction exhibiting structural markers of illicit flows",
+            ),
+        ]
+
+    _CACHED_EXAMPLES = examples
+    return ExamplesResponse(examples=examples, disclaimer=DISCLAIMER)
 

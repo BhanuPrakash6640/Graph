@@ -3,15 +3,37 @@
 @tailwind utilities;
 
 :root {
-  --background: #0f172a;
-  --foreground: #f8fafc;
+  --background: #FAFAF7;
+  --foreground: #111827;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: Inter, "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   margin: 0;
   padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* Semantic hatched pattern for Unknown class */
+.hatched-unknown {
+  background: repeating-linear-gradient(
+    45deg,
+    #F9FAFB,
+    #F9FAFB 4px,
+    #E5E7EB 4px,
+    #E5E7EB 8px
+  );
+}
+
+/* Tabular figures for data tables and IDs */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Clean details disclosures */
+details summary::-webkit-details-marker {
+  display: none;
+}
