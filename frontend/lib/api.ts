@@ -161,7 +161,7 @@ export const api = {
   getTransaction: (txId: string) => fetchJson<TransactionData>(`/api/transaction/${txId}`),
   getNeighbors: (txId: string, k: number = 1) =>
     fetchJson<NeighborsData>(`/api/transaction/${txId}/neighbors?k=${k}`),
-  getExplanation: (txId: string, modelId: string = "xgb_gcn_paper_refit_all") =>
+  getExplanation: (txId: string, modelId: string = "gcn_paper_refit_all") =>
     fetchJson<ExplanationData>(`/api/transaction/${txId}/explanation?model_id=${modelId}`),
   getBenchmark: () => fetchJson<BenchmarkData>("/api/benchmark"),
   getTemporalAnalysis: () => fetchJson<TemporalData>("/api/temporal-analysis"),

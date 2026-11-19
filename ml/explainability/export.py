@@ -88,92 +88,79 @@ def export_explanations(
     gcn_ckpt_path = gcn_ckpts[0]
     logger.info("Loading GCN checkpoint: %s", gcn_ckpt_path)
 
-    raw_ckpt = torch.load(gcn_ckpt_path, map_location="cpu", weights_only=False)
-    gcn_kwargs = raw_ckpt.get("model_kwargs", {"in_channels": 165, "hidden_channels": 128, "out_channels": 2})
-    gcn_model = GCN(
-        in_channels=gcn_kwargs.get("in_channels", 165),
-        hidden_channels=gcn_kwargs.get("hidden_channels", 128),
-        out_channels=gcn_kwargs.get("out_channels", 2),
-        dropout=0.0,
-    )
-    gcn_model.load_state_dict(raw_ckpt["state_dict"])
-    gcn_model.eval()
-    gcn_thresh = float(raw_ckpt.get("threshold", 0.5))
+    gcn_model, gcn_meta = load_gnn_checkpoint(gcn_ckpt_path, device="cpu")
+    gcn_thresh = gcn_meta["threshold"]
+    logger.info("Loaded GCN threshold=%.4f", gcn_thresh)
 
-    # 4. Predict on Test Nodes using XGBoost
+    # 4. Build Period Graph for Test Period
+    test_graph = build_period_graph(view=view, steps=view.split.test_steps, undirected=True)
+    test_x_tensor = test_graph.x
+    test_edge_tensor = test_graph.edge_index
+    test_orig_idx = test_graph.orig_idx.numpy()
+    global_to_local = {int(g): int(loc) for loc, g in enumerate(test_orig_idx)}
+    local_tx_ids = data.tx_ids[test_orig_idx]
+
+    # Precompute GCN scores on test graph nodes
+    with torch.no_grad():
+        gnn_logits = gcn_model(test_x_tensor, test_edge_tensor)
+        gnn_scores_graph = F.softmax(gnn_logits, dim=-1)[:, 1].numpy()
+
+    # Precompute XGBoost scores on test nodes
     test_node_indices = np.where(view.test_mask)[0]
-    test_scores = xgb_model.predict_proba(X_test_all)[:, 1].astype(np.float32)
+    test_scores_xgb = xgb_model.predict_proba(X_test_all)[:, 1].astype(np.float32)
     test_y = view.y[test_node_indices]
     test_tx_ids = data.tx_ids[test_node_indices]
     test_steps = view.time_step[test_node_indices]
 
-    df_candidates = pd.DataFrame({
-        "node_idx": test_node_indices,
-        "txId": test_tx_ids,
-        "time_step": test_steps,
-        "y": test_y,
-        "score": test_scores,
-    })
+    # Map test nodes to GCN scores
+    test_scores_gcn = np.array([
+        gnn_scores_graph[global_to_local[idx]] if idx in global_to_local else 0.0
+        for idx in test_node_indices
+    ], dtype=np.float32)
 
-    # Select node cohorts
-    # A. Top N illicit predictions (sorted by score descending)
-    top_illicit_df = df_candidates[df_candidates["score"] >= xgb_thresh].sort_values(
-        "score", ascending=False
-    ).head(top_n_illicit)
+    # Helper function to select candidate cohorts for a specific model
+    def select_cohorts(scores: np.ndarray, threshold: float) -> pd.DataFrame:
+        df = pd.DataFrame({
+            "node_idx": test_node_indices,
+            "txId": test_tx_ids,
+            "time_step": test_steps,
+            "y": test_y,
+            "score": scores,
+        })
+        top_ill = df[df["score"] >= threshold].sort_values("score", ascending=False).head(top_n_illicit)
+        fp = df[(df["score"] >= threshold) & (df["y"] == 0)].sort_values("score", ascending=False).head(n_false_positives)
+        tn = df[(df["score"] < 0.2) & (df["y"] == 0)].sample(n=min(n_licit_controls, len(df)), random_state=42)
+        
+        unlab_mask = np.isin(view.time_step, list(view.split.test_steps)) & (view.y == UNKNOWN)
+        unlab_idx = np.where(unlab_mask)[0]
+        unlab_samp = np.random.RandomState(42).choice(unlab_idx, size=min(n_unknown_controls, len(unlab_idx)), replace=False)
+        unlab_df = pd.DataFrame({
+            "node_idx": unlab_samp,
+            "txId": data.tx_ids[unlab_samp],
+            "time_step": view.time_step[unlab_samp],
+            "y": UNKNOWN,
+            "score": [
+                float(scores[np.where(test_node_indices == u)[0][0]]) if u in test_node_indices
+                else float(gnn_scores_graph[global_to_local[u]]) if u in global_to_local
+                else 0.0
+                for u in unlab_samp
+            ],
+        })
+        return pd.concat([top_ill, fp, tn, unlab_df]).drop_duplicates(subset=["node_idx"])
 
-    # B. Confirmed False Positives (high score >= threshold, but ground-truth y == 0 [licit])
-    fp_df = df_candidates[
-        (df_candidates["score"] >= xgb_thresh) & (df_candidates["y"] == 0)
-    ].sort_values("score", ascending=False).head(n_false_positives)
+    # -------------------------------------------------------------------------
+    # 5. Export XGBoost Explanations (model_run_id = "xgb_paper_refit_all")
+    # -------------------------------------------------------------------------
+    xgb_run_id = "xgb_paper_refit_all"
+    xgb_run_dir = out_path / xgb_run_id
+    xgb_run_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Generating XGBoost explanations in %s...", xgb_run_dir)
 
-    # C. Confirmed True Negatives (low score < threshold, ground-truth y == 0)
-    tn_df = df_candidates[
-        (df_candidates["score"] < 0.2) & (df_candidates["y"] == 0)
-    ].sample(n=min(n_licit_controls, len(df_candidates)), random_state=42)
-
-    # D. Unknown Test Nodes (y == UNKNOWN)
-    unlab_mask = np.isin(view.time_step, list(view.split.test_steps)) & (view.y == UNKNOWN)
-    unlab_indices = np.where(unlab_mask)[0]
-    unlab_sample = np.random.RandomState(42).choice(
-        unlab_indices, size=min(n_unknown_controls, len(unlab_indices)), replace=False
-    )
-    X_unlab = view.X[unlab_sample]
-    s_unlab = xgb_model.predict_proba(X_unlab)[:, 1].astype(np.float32)
-    unlab_df = pd.DataFrame({
-        "node_idx": unlab_sample,
-        "txId": data.tx_ids[unlab_sample],
-        "time_step": view.time_step[unlab_sample],
-        "y": UNKNOWN,
-        "score": s_unlab,
-    })
-
-    selected_nodes = pd.concat([top_illicit_df, fp_df, tn_df, unlab_df]).drop_duplicates(
-        subset=["node_idx"]
-    ).to_dict(orient="records")
-
-    logger.info("Selected %d candidate nodes for full multi-faceted explanations.", len(selected_nodes))
-
-    # 5. Build Period Graph for Test Period
-    test_graph = build_period_graph(view=view, steps=view.split.test_steps, undirected=True)
-    test_x_tensor = test_graph.x
-    test_edge_tensor = test_graph.edge_index
-    global_to_local = {int(g): int(loc) for loc, g in enumerate(test_graph.orig_idx.numpy())}
-    local_tx_ids = data.tx_ids[test_graph.orig_idx.numpy()]
-
-    # Precompute GNN scores on test graph nodes for neighbour risk flags
-    with torch.no_grad():
-        gnn_logits = gcn_model(test_x_tensor, test_edge_tensor)
-        gnn_scores = F.softmax(gnn_logits, dim=-1)[:, 1].numpy()
-
-    # 6. Generate Multi-Faceted Explanations
-    model_run_id = "xgb_gcn_paper_refit_all"
-    run_dir = out_path / model_run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-
+    selected_xgb = select_cohorts(test_scores_xgb, xgb_thresh).to_dict(orient="records")
     index_records = []
     explanations_list = []
 
-    for item in selected_nodes:
+    for item in selected_xgb:
         global_idx = int(item["node_idx"])
         tx_id = str(item["txId"])
         step = int(item["time_step"])
@@ -181,21 +168,93 @@ def export_explanations(
         score = float(item["score"])
         pred_class = int(score >= xgb_thresh)
 
-        if y_val == 1:
-            label_str = "illicit"
-        elif y_val == 0:
-            label_str = "licit"
-        else:
-            label_str = "unknown"
+        label_str = "illicit" if y_val == 1 else "licit" if y_val == 0 else "unknown"
 
-        # Tabular SHAP
+        # Tabular SHAP attributions
         x_vec = view.X[global_idx]
         top_features = explain_node_shap(shap_explainer, x_vec, feat_names, top_k=10)
 
-        # Graph Local Index in Test Graph
+        # Structural flags evaluated using XGBoost scores on 1-hop neighbours
         local_idx = global_to_local.get(global_idx)
         if local_idx is not None and local_idx < test_x_tensor.size(0):
-            # PyG GNNExplainer
+            # Compute XGBoost scores for all graph neighbours
+            src_edges = test_edge_tensor[0].numpy()
+            dst_edges = test_edge_tensor[1].numpy()
+            nbrs_loc = dst_edges[src_edges == local_idx]
+            nbrs_loc = np.unique(nbrs_loc[nbrs_loc != local_idx])
+            
+            if len(nbrs_loc) > 0:
+                nbrs_global = test_orig_idx[nbrs_loc]
+                nbrs_X = view.X[nbrs_global]
+                nbrs_xgb_scores = xgb_model.predict_proba(nbrs_X)[:, 1].astype(np.float32)
+                # Map back to local array
+                nbr_scores_map = np.zeros(test_x_tensor.size(0), dtype=np.float32)
+                nbr_scores_map[nbrs_loc] = nbrs_xgb_scores
+                pattern_flags = compute_pattern_flags(
+                    edge_index=test_edge_tensor,
+                    target_node_idx=local_idx,
+                    neighbor_scores=nbr_scores_map,
+                    threshold=xgb_thresh,
+                )
+            else:
+                pattern_flags = ["isolated_or_leaf"]
+        else:
+            pattern_flags = ["isolated_or_leaf"]
+
+        record = {
+            "txId": tx_id,
+            "node_idx": global_idx,
+            "time_step": step,
+            "model_run_id": xgb_run_id,
+            "score": round(score, 4),
+            "predicted_class": pred_class,
+            "threshold": round(float(xgb_thresh), 4),
+            "known_label": label_str,
+            "top_features": top_features,
+            "neighbor_contributions": [],
+            "explainer_edges": [],
+            "fidelity": {"fidelity_plus": 0.0, "fidelity_minus": 0.0},
+            "pattern_flags": pattern_flags,
+            "disclaimer": DISCLAIMER,
+        }
+
+        with open(xgb_run_dir / f"{tx_id}.json", "w") as f:
+            json.dump(record, f, indent=2)
+
+        index_records.append({
+            "txId": tx_id,
+            "time_step": step,
+            "model_run_id": xgb_run_id,
+            "score": round(score, 4),
+            "predicted_class": pred_class,
+            "known_label": label_str,
+            "pattern_flags": pattern_flags,
+            "file": f"{xgb_run_id}/{tx_id}.json",
+        })
+
+    # -------------------------------------------------------------------------
+    # 6. Export GCN Explanations (model_run_id = "gcn_paper_refit_all")
+    # -------------------------------------------------------------------------
+    gcn_run_id = "gcn_paper_refit_all"
+    gcn_run_dir = out_path / gcn_run_id
+    gcn_run_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Generating GCN explanations in %s...", gcn_run_dir)
+
+    selected_gcn = select_cohorts(test_scores_gcn, gcn_thresh).to_dict(orient="records")
+
+    for item in selected_gcn:
+        global_idx = int(item["node_idx"])
+        tx_id = str(item["txId"])
+        step = int(item["time_step"])
+        y_val = int(item["y"])
+        local_idx = global_to_local.get(global_idx)
+
+        gcn_score = float(gnn_scores_graph[local_idx]) if local_idx is not None else float(item["score"])
+        pred_class = int(gcn_score >= gcn_thresh)
+        label_str = "illicit" if y_val == 1 else "licit" if y_val == 0 else "unknown"
+
+        if local_idx is not None and local_idx < test_x_tensor.size(0):
+            # PyG GNNExplainer with global node index resolution and hard thresholding
             gnn_exp = explain_node_gnn(
                 model=gcn_model,
                 x=test_x_tensor,
@@ -203,10 +262,12 @@ def export_explanations(
                 target_node_idx=local_idx,
                 feature_names=feat_names,
                 node_tx_ids=local_tx_ids,
+                orig_idx=test_orig_idx,
                 epochs=gnn_epochs,
             )
             fidelity_dict = gnn_exp["fidelity"]
             explainer_edges = gnn_exp["explainer_edges"]
+            top_node_features = gnn_exp["top_node_features"]
 
             # Neighbour Occlusion
             neighbor_contribs = compute_neighbor_occlusion(
@@ -221,25 +282,33 @@ def export_explanations(
             pattern_flags = compute_pattern_flags(
                 edge_index=test_edge_tensor,
                 target_node_idx=local_idx,
-                neighbor_scores=gnn_scores,
+                neighbor_scores=gnn_scores_graph,
                 threshold=gcn_thresh,
             )
         else:
             fidelity_dict = {"fidelity_plus": 0.0, "fidelity_minus": 0.0}
             explainer_edges = []
             neighbor_contribs = []
+            top_node_features = []
             pattern_flags = ["isolated_or_leaf"]
+
+        # Adapt top_node_features into top_features schema for UI compatibility
+        top_features_gcn = [
+            {"feature": f["feature"], "value": 0.0, "shap_value": f["weight"], "direction": "+" if f["weight"] > 0 else "-"}
+            for f in top_node_features
+        ]
 
         record = {
             "txId": tx_id,
             "node_idx": global_idx,
             "time_step": step,
-            "model_run_id": model_run_id,
-            "score": round(score, 4),
+            "model_run_id": gcn_run_id,
+            "score": round(gcn_score, 4),
             "predicted_class": pred_class,
-            "threshold": round(xgb_thresh, 4),
+            "threshold": round(float(gcn_thresh), 4),
             "known_label": label_str,
-            "top_features": top_features,
+            "top_features": top_features_gcn,
+            "top_node_features": top_node_features,
             "neighbor_contributions": neighbor_contribs[:10],
             "explainer_edges": explainer_edges[:10],
             "fidelity": fidelity_dict,
@@ -247,9 +316,8 @@ def export_explanations(
             "disclaimer": DISCLAIMER,
         }
 
-        # Write to individual json file
-        tx_file = run_dir / f"{tx_id}.json"
-        with open(tx_file, "w") as f:
+        # Write to GCN directory
+        with open(gcn_run_dir / f"{tx_id}.json", "w") as f:
             json.dump(record, f, indent=2)
 
         # Also write canonical root alias
@@ -260,18 +328,20 @@ def export_explanations(
         index_records.append({
             "txId": tx_id,
             "time_step": step,
-            "score": round(score, 4),
+            "model_run_id": gcn_run_id,
+            "score": round(gcn_score, 4),
             "predicted_class": pred_class,
             "known_label": label_str,
             "pattern_flags": pattern_flags,
-            "file": f"{model_run_id}/{tx_id}.json",
+            "file": f"{gcn_run_id}/{tx_id}.json",
+            "fidelity_plus": fidelity_dict.get("fidelity_plus", 0.0),
         })
 
     # Save index.json
     with open(out_path / "index.json", "w") as f:
         json.dump(index_records, f, indent=2)
 
-    logger.info("Successfully exported %d explanations to %s", len(explanations_list), out_dir)
+    logger.info("Successfully exported %d explanations across %s and %s", len(index_records), xgb_run_id, gcn_run_id)
     return explanations_list
 
 

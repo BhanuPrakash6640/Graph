@@ -102,25 +102,37 @@ def get_neighbors(
 def get_explanation(
     tx_id: str,
     request: Request,
-    model_id: str = Query(default="xgb_gcn_paper_refit_all"),
+    model_id: str = Query(default="gcn_paper_refit_all"),
 ) -> ExplanationResponse:
     store = request.app.state.graph_store
     if not store.has_tx(tx_id):
         raise HTTPException(status_code=404, detail=f"Transaction ID {tx_id} not found in dataset")
 
-    # Check precomputed JSON
+    # Map aliases
+    target_id = model_id
+    if target_id in ("gcn", "static_gcn"):
+        target_id = "gcn_paper_refit_all"
+    elif target_id in ("xgb", "xgboost"):
+        target_id = "xgb_paper_refit_all"
+
     exp_dir = Path("data/processed/explanations")
-    file_path = exp_dir / model_id / f"{tx_id}.json"
+    file_path = exp_dir / target_id / f"{tx_id}.json"
     if not file_path.exists():
-        file_path = exp_dir / f"{tx_id}.json"
+        # Fallback to other model or root alias
+        alt_id = "xgb_paper_refit_all" if "gcn" in target_id else "gcn_paper_refit_all"
+        file_path_alt = exp_dir / alt_id / f"{tx_id}.json"
+        if file_path_alt.exists():
+            file_path = file_path_alt
+        else:
+            file_path = exp_dir / f"{tx_id}.json"
 
     if not file_path.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"Precomputed explanation for transaction {tx_id} not found",
+            detail=f"Precomputed explanation for transaction {tx_id} (model={model_id}) not found",
         )
 
-    with open(file_path, "r") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     return ExplanationResponse(**data)
 

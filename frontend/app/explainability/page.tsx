@@ -10,6 +10,7 @@ function ExplainabilityContent() {
   const initialTx = searchParams?.get("txId") || "69746416";
 
   const [selectedTx, setSelectedTx] = useState<string>(initialTx);
+  const [selectedModel, setSelectedModel] = useState<"gcn" | "xgb">("gcn");
   const [explanation, setExplanation] = useState<ExplanationData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +26,8 @@ function ExplainabilityContent() {
       try {
         setLoading(true);
         setError(null);
-        const data = await api.getExplanation(selectedTx);
+        const modelId = selectedModel === "gcn" ? "gcn_paper_refit_all" : "xgb_paper_refit_all";
+        const data = await api.getExplanation(selectedTx, modelId);
         setExplanation(data);
       } catch (err: any) {
         setError(err.message || "Failed to load explanation.");
@@ -34,7 +36,7 @@ function ExplainabilityContent() {
       }
     }
     load();
-  }, [selectedTx]);
+  }, [selectedTx, selectedModel]);
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
@@ -50,22 +52,49 @@ function ExplainabilityContent() {
         </p>
       </div>
 
-      {/* Node Selector */}
-      <div className="flex flex-wrap gap-2.5">
-        {sampleNodes.map((n) => (
+      {/* Controls: Node Selector & Model Selector */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        {/* Node Selector */}
+        <div className="flex flex-wrap gap-2.5">
+          {sampleNodes.map((n) => (
+            <button
+              key={n.txId}
+              onClick={() => setSelectedTx(n.txId)}
+              className={`px-3 py-2 rounded-xl text-xs font-medium transition flex items-center space-x-2 ${
+                selectedTx === n.txId
+                  ? "bg-cyan-600 text-white font-semibold shadow-lg shadow-cyan-900/30"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${n.type === "tp" ? "bg-red-400" : "bg-amber-400"}`}></span>
+              <span>{n.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Model Toggle */}
+        <div className="flex items-center space-x-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 self-start sm:self-auto">
           <button
-            key={n.txId}
-            onClick={() => setSelectedTx(n.txId)}
-            className={`px-3 py-2 rounded-xl text-xs font-medium transition flex items-center space-x-2 ${
-              selectedTx === n.txId
-                ? "bg-cyan-600 text-white font-semibold shadow-lg shadow-cyan-900/30"
-                : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+            onClick={() => setSelectedModel("gcn")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              selectedModel === "gcn"
+                ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/30"
+                : "text-slate-400 hover:text-white"
             }`}
           >
-            <span className={`w-2 h-2 rounded-full ${n.type === "tp" ? "bg-red-400" : "bg-amber-400"}`}></span>
-            <span>{n.label}</span>
+            GCN Model
           </button>
-        ))}
+          <button
+            onClick={() => setSelectedModel("xgb")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              selectedModel === "xgb"
+                ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/30"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            XGBoost Model
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -174,9 +203,22 @@ function ExplainabilityContent() {
             <div className="space-y-6">
               {/* PyG Fidelity Card */}
               <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
-                <div className="flex items-center space-x-2">
-                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                  <h3 className="text-base font-semibold text-white">PyG GNNExplainer Fidelity</h3>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                    <h3 className="text-base font-semibold text-white">PyG GNNExplainer Fidelity</h3>
+                  </div>
+                  {(explanation.fidelity?.fidelity_plus ?? 0) > 0.05 ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center space-x-1">
+                      <ShieldCheck className="w-3 h-3" />
+                      <span>Reliable</span>
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center space-x-1">
+                      <AlertCircle className="w-3 h-3" />
+                      <span>Not Reliable (≤ 0.05)</span>
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-slate-400">
                   Measures how accurately the 2-hop explanation subgraph mirrors full model behavior.
@@ -185,15 +227,17 @@ function ExplainabilityContent() {
                 <div className="grid grid-cols-2 gap-4 pt-1">
                   <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
                     <span className="text-[11px] text-slate-500 uppercase block">Fidelity+ (Preservation)</span>
-                    <span className="text-xl font-bold font-mono text-emerald-400 mt-1 block">
-                      {explanation.fidelity.fidelity_plus.toFixed(4)}
+                    <span className={`text-xl font-bold font-mono mt-1 block ${
+                      (explanation.fidelity?.fidelity_plus ?? 0) > 0.05 ? "text-emerald-400" : "text-amber-400"
+                    }`}>
+                      {(explanation.fidelity?.fidelity_plus ?? 0).toFixed(4)}
                     </span>
                     <p className="text-[10px] text-slate-500 mt-1">Accuracy when retaining salient subgraph</p>
                   </div>
                   <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
                     <span className="text-[11px] text-slate-500 uppercase block">Fidelity- (Drop)</span>
                     <span className="text-xl font-bold font-mono text-cyan-400 mt-1 block">
-                      {explanation.fidelity.fidelity_minus.toFixed(4)}
+                      {(explanation.fidelity?.fidelity_minus ?? 0).toFixed(4)}
                     </span>
                     <p className="text-[10px] text-slate-500 mt-1">Score drop when salient subgraph is removed</p>
                   </div>

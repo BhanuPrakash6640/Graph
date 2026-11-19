@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch_geometric.explain import Explainer, GNNExplainer, ModelConfig, fidelity
+from torch_geometric.explain import Explainer, GNNExplainer, ModelConfig, ThresholdConfig, fidelity
 from torch_geometric.utils import k_hop_subgraph
 
 from ml.gnn.models import GCN
@@ -27,16 +27,17 @@ def load_gnn_checkpoint(
 ) -> tuple[torch.nn.Module, dict[str, Any]]:
     """Load a trained GNN checkpoint and its metadata."""
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    state_dict = ckpt.get("model_state_dict", ckpt)
+    state_dict = ckpt.get("model_state_dict", ckpt.get("state_dict", ckpt))
+    kw = ckpt.get("model_kwargs", {})
     meta = {
         "model_class": ckpt.get("model_class", "GCN"),
-        "in_channels": ckpt.get("in_channels", 165),
-        "hidden_channels": ckpt.get("hidden_channels", 64),
-        "out_channels": ckpt.get("out_channels", 2),
-        "dropout": ckpt.get("dropout", 0.3),
+        "in_channels": kw.get("in_channels", ckpt.get("in_channels", 165)),
+        "hidden_channels": kw.get("hidden_channels", ckpt.get("hidden_channels", 128)),
+        "out_channels": kw.get("out_channels", ckpt.get("out_channels", 2)),
+        "dropout": kw.get("dropout", ckpt.get("dropout", 0.3)),
         "feature_set": ckpt.get("feature_set", "all"),
         "best_epoch": ckpt.get("best_epoch", 0),
-        "threshold": ckpt.get("threshold", 0.5),
+        "threshold": float(ckpt.get("best_threshold", ckpt.get("threshold", 0.5))),
     }
 
     model = GCN(
@@ -58,11 +59,24 @@ def explain_node_gnn(
     target_node_idx: int,
     feature_names: list[str] | None = None,
     node_tx_ids: list[str] | np.ndarray | None = None,
+    orig_idx: list[int] | np.ndarray | torch.Tensor | None = None,
     epochs: int = 50,
     top_k_edges: int = 10,
     top_k_features: int = 10,
 ) -> dict[str, Any]:
     """Compute GNNExplainer edge and feature attributions on the 2-hop subgraph.
+
+    Args:
+        model: Trained GNN model returning raw logits (N, 2).
+        x: Node feature tensor (N, D).
+        edge_index: Graph edge tensor (2, E).
+        target_node_idx: Index of target node in x.
+        feature_names: Optional names of features.
+        node_tx_ids: Optional txIds indexed matching x.
+        orig_idx: Optional array mapping index in x to global node index.
+        epochs: Training epochs for GNNExplainer masks.
+        top_k_edges: Max number of top edges to return.
+        top_k_features: Max number of top features to return.
 
     Returns:
         Dict with fidelity (fidelity_plus, fidelity_minus), explainer_edges, and top_node_features.
@@ -87,6 +101,8 @@ def explain_node_gnn(
         return_type="raw",
     )
 
+    threshold_config = ThresholdConfig(threshold_type="hard", value=0.5)
+
     explainer = Explainer(
         model=model,
         algorithm=GNNExplainer(epochs=epochs),
@@ -94,6 +110,7 @@ def explain_node_gnn(
         node_mask_type="attributes",
         edge_mask_type="object",
         model_config=model_config,
+        threshold_config=threshold_config,
     )
 
     # 2. Run explainer on the 2-hop subgraph
@@ -116,11 +133,13 @@ def explain_node_gnn(
         for i in order:
             src_local = int(sub_edge_index[0, i])
             dst_local = int(sub_edge_index[1, i])
-            src_global = int(subset[src_local])
-            dst_global = int(subset[dst_local])
+            src_in_graph = int(subset[src_local])
+            dst_in_graph = int(subset[dst_local])
+            src_global = int(orig_idx[src_in_graph]) if orig_idx is not None else src_in_graph
+            dst_global = int(orig_idx[dst_in_graph]) if orig_idx is not None else dst_in_graph
 
-            src_tx = str(node_tx_ids[src_global]) if node_tx_ids is not None else str(src_global)
-            dst_tx = str(node_tx_ids[dst_global]) if node_tx_ids is not None else str(dst_global)
+            src_tx = str(node_tx_ids[src_in_graph]) if node_tx_ids is not None else str(src_global)
+            dst_tx = str(node_tx_ids[dst_in_graph]) if node_tx_ids is not None else str(dst_global)
             top_edges.append({
                 "source": src_tx,
                 "target": dst_tx,
@@ -143,8 +162,10 @@ def explain_node_gnn(
                 "weight": round(float(target_feat_mask[f_idx]), 4),
             })
 
+    target_global_idx = int(orig_idx[target_node_idx]) if orig_idx is not None else int(target_node_idx)
+
     return {
-        "target_node_idx": int(target_node_idx),
+        "target_node_idx": target_global_idx,
         "fidelity": {
             "fidelity_plus": round(float(fid_plus), 4),
             "fidelity_minus": round(float(fid_minus), 4),

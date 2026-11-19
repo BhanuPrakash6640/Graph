@@ -85,32 +85,54 @@ def compute_neighbor_occlusion(
 
 
 def compute_pattern_flags(
-    edge_index: torch.Tensor | np.ndarray,
+    edge_index: torch.Tensor | np.ndarray | tuple[np.ndarray, np.ndarray],
     target_node_idx: int,
     neighbor_scores: np.ndarray | torch.Tensor | None = None,
     threshold: float = 0.5,
+    neighbor_labels: np.ndarray | None = None,
 ) -> list[str]:
     """Compute structural graph pattern flags for a transaction node.
 
-    Evaluates topological patterns:
-    - fan_out: out-degree >= 5 (dispersion / peeling chain split)
-    - fan_in: in-degree >= 5 (aggregation / consolidation)
-    - chain_node: in-degree in {1, 2} and out-degree in {1, 2} (pass-through / layering)
-    - high_illicit_neighborhood: >= 30% of 1-hop neighbours predicted illicit
-    - isolated_or_leaf: total degree <= 1
+    Each flag is defined precisely as follows:
+    - fan_out:
+        Node sends outputs to >= 5 distinct recipients (out_degree >= 5).
+        Indicates fund dispersion, mixing split, or peeling chain branch.
+    - fan_in:
+        Node receives inputs from >= 5 distinct senders (in_degree >= 5).
+        Indicates fund consolidation or multi-source aggregation.
+    - chain_node:
+        Pass-through layering node having in_degree in {1, 2} and out_degree in {1, 2},
+        or total unique degree == 2. Represents intermediate chain step.
+    - isolated_or_leaf:
+        Node with total unique degree <= 1 (terminal endpoint or isolated transaction).
+    - high_illicit_neighborhood:
+        >= 30% of the node's unique 1-hop neighbours are classified as illicit.
+        When neighbor_scores is provided, an illicit neighbour is defined strictly
+        as one with score >= threshold (using the explicit threshold of the model being explained).
+        When neighbor_labels is provided, an illicit neighbour is one with label == 1.
+        Requires at least 1 neighbour classified as illicit; if all neighbours have
+        score < threshold (e.g. licit or unknown controls), this flag is NEVER set.
 
-    Enforced constraint: Never evaluates the ground-truth label of target_node_idx.
+    Enforced constraint: Never evaluates the ground-truth label or prediction of target_node_idx itself.
     """
-    if isinstance(edge_index, torch.Tensor):
+    if isinstance(edge_index, tuple):
+        src = np.asarray(edge_index[0])
+        dst = np.asarray(edge_index[1])
+    elif isinstance(edge_index, torch.Tensor):
         src = edge_index[0].detach().cpu().numpy()
         dst = edge_index[1].detach().cpu().numpy()
     else:
-        src = edge_index[0]
-        dst = edge_index[1]
+        src = np.asarray(edge_index[0])
+        dst = np.asarray(edge_index[1])
 
     out_degree = int(np.sum(src == target_node_idx))
     in_degree = int(np.sum(dst == target_node_idx))
-    total_degree = in_degree + out_degree
+
+    out_nbrs = dst[src == target_node_idx]
+    in_nbrs = src[dst == target_node_idx]
+    all_nbrs = np.unique(np.concatenate([out_nbrs, in_nbrs]))
+    all_nbrs = all_nbrs[all_nbrs != target_node_idx]
+    total_degree = len(all_nbrs)
 
     flags = []
 
@@ -118,27 +140,29 @@ def compute_pattern_flags(
         flags.append("fan_out")
     if in_degree >= 5:
         flags.append("fan_in")
-    if in_degree in (1, 2) and out_degree in (1, 2):
+    if (in_degree in (1, 2) and out_degree in (1, 2)) or total_degree == 2:
         flags.append("chain_node")
     if total_degree <= 1:
         flags.append("isolated_or_leaf")
 
     # Neighbour risk concentration
-    if neighbor_scores is not None and total_degree > 0:
-        out_nbrs = dst[src == target_node_idx]
-        in_nbrs = src[dst == target_node_idx]
-        all_nbrs = np.unique(np.concatenate([out_nbrs, in_nbrs]))
-        all_nbrs = all_nbrs[all_nbrs != target_node_idx]
-
-        if len(all_nbrs) > 0:
+    if total_degree > 0:
+        if neighbor_scores is not None:
             if isinstance(neighbor_scores, torch.Tensor):
                 scores_arr = neighbor_scores.detach().cpu().numpy()
             else:
                 scores_arr = np.asarray(neighbor_scores)
 
             nbr_scores = scores_arr[all_nbrs]
-            illicit_ratio = float(np.mean(nbr_scores >= threshold))
-            if illicit_ratio >= 0.30:
+            num_illicit = int(np.sum(nbr_scores >= threshold))
+            illicit_ratio = float(num_illicit / total_degree)
+            if num_illicit >= 1 and illicit_ratio >= 0.30:
+                flags.append("high_illicit_neighborhood")
+        elif neighbor_labels is not None:
+            nbr_labels = np.asarray(neighbor_labels)[all_nbrs]
+            num_illicit = int(np.sum(nbr_labels == 1))
+            illicit_ratio = float(num_illicit / total_degree)
+            if num_illicit >= 1 and illicit_ratio >= 0.30:
                 flags.append("high_illicit_neighborhood")
 
     return sorted(flags)

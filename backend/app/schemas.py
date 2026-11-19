@@ -82,11 +82,12 @@ class ExplanationResponse(BaseModel):
     predicted_class: int
     threshold: float
     known_label: Literal["illicit", "licit", "unknown"]
-    top_features: list[dict[str, Any]]
-    neighbor_contributions: list[dict[str, Any]]
-    explainer_edges: list[dict[str, Any]]
-    fidelity: dict[str, float]
-    pattern_flags: list[str]
+    top_features: list[dict[str, Any]] = Field(default_factory=list)
+    top_node_features: list[dict[str, Any]] = Field(default_factory=list)
+    neighbor_contributions: list[dict[str, Any]] = Field(default_factory=list)
+    explainer_edges: list[dict[str, Any]] = Field(default_factory=list)
+    fidelity: dict[str, float] = Field(default_factory=dict)
+    pattern_flags: list[str] = Field(default_factory=list)
     disclaimer: str
 
 
