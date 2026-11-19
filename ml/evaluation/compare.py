@@ -260,28 +260,16 @@ def get_comparisons(suite: str = "exp1") -> list[dict[str, Any]]:
                 "cfg_b": {"model": "evolvegcn_frozen", "feature_set": "all"},
             },
             {
-                "name": "Static GCN vs Control B (all features)",
-                "split": "paper_refit",
-                "cfg_a": {"model": "gcn", "feature_set": "all"},
-                "cfg_b": {"model": "control_b", "feature_set": "all"},
-            },
-            {
-                "name": "EvolveGCN-O vs Control B (all features)",
-                "split": "paper_refit",
-                "cfg_a": {"model": "evolvegcn", "feature_set": "all"},
-                "cfg_b": {"model": "control_b", "feature_set": "all"},
-            },
-            {
                 "name": "Static GCN vs EvolveGCN-O (local features)",
                 "split": "paper_refit",
                 "cfg_a": {"model": "gcn", "feature_set": "local"},
                 "cfg_b": {"model": "evolvegcn", "feature_set": "local"},
             },
             {
-                "name": "Static GCN vs Control B (local features)",
+                "name": "Static GCN vs EvolveGCN-Frozen (local features)",
                 "split": "paper_refit",
                 "cfg_a": {"model": "gcn", "feature_set": "local"},
-                "cfg_b": {"model": "control_b", "feature_set": "local"},
+                "cfg_b": {"model": "evolvegcn_frozen", "feature_set": "local"},
             },
             {
                 "name": "Best Tabular (XGB) vs EvolveGCN-O (all features)",
@@ -290,9 +278,9 @@ def get_comparisons(suite: str = "exp1") -> list[dict[str, Any]]:
                 "cfg_b": {"model": "xgb", "feature_set": "all"},
             },
             {
-                "name": "Best Tabular (XGB) vs Control B (all features)",
+                "name": "Best Tabular (XGB) vs EvolveGCN-Frozen (all features)",
                 "split": "paper_refit",
-                "cfg_a": {"model": "control_b", "feature_set": "all"},
+                "cfg_a": {"model": "evolvegcn_frozen", "feature_set": "all"},
                 "cfg_b": {"model": "xgb", "feature_set": "all"},
             },
             {
@@ -302,10 +290,10 @@ def get_comparisons(suite: str = "exp1") -> list[dict[str, Any]]:
                 "cfg_b": {"model": "evolvegcn", "feature_set": "all"},
             },
             {
-                "name": "Static GCN vs Control B (darknet shutdown / fc_44)",
+                "name": "Static GCN vs EvolveGCN-Frozen (darknet shutdown / fc_44)",
                 "split": "fc_44",
                 "cfg_a": {"model": "gcn", "feature_set": "all"},
-                "cfg_b": {"model": "control_b", "feature_set": "all"},
+                "cfg_b": {"model": "evolvegcn_frozen", "feature_set": "all"},
             },
         ]
     else:
