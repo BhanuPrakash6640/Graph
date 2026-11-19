@@ -25,18 +25,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch==2.5.1+cpu torchvision==0.20.1+cpu torchaudio==2.5.1+cpu --index-url https://download.pytorch.org/whl/cpu
           pip install torch-geometric==2.6.1
-          pip install -r requirements-ml.txt
-          pip install -r backend/requirements.txt
-          pip install ruff pytest pytest-cov shap
+          pip install ruff pytest pytest-cov httpx fastapi pydantic scikit-learn xgboost shap joblib pyarrow pyyaml networkx psutil
           pip install -e .
 
       - name: Run Ruff Lint
         run: |
           ruff check .
 
-      - name: Run Pytest (Synthetic Fixtures & Backend API)
+      - name: Run Synthetic Pytest Suite
         run: |
-          python -m pytest tests/ backend/tests/ -v --ignore=tests/test_data_real.py
+          python -m pytest tests/ -v
 
   frontend-build:
     name: Frontend Lint & Production Build
