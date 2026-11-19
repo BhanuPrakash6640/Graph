@@ -57,6 +57,7 @@ export interface NeighborNode {
 export interface NeighborsData {
   tx_id: string;
   time_step: number;
+  label?: "illicit" | "licit" | "unknown";
   k: number;
   total_neighbors: number;
   neighbors: NeighborNode[];
@@ -165,6 +166,47 @@ export interface ExamplesData {
   disclaimer: string;
 }
 
+export interface TemporalStepScore {
+  step: number;
+  illicit: number;
+  xgb: number;
+  gcn: number;
+  evolve: number;
+}
+
+export interface TemporalSeriesData {
+  steps: TemporalStepScore[];
+  regime_shift_start: number;
+  disclaimer: string;
+}
+
+export interface BenchmarkSummaryModel {
+  name: string;
+  feature_set: string;
+  mean: number;
+  ci_lo: number;
+  ci_hi: number;
+  is_headline?: boolean;
+}
+
+export interface BenchmarkSummaryData {
+  models: BenchmarkSummaryModel[];
+  base_rate: number;
+  key_takeaway: string;
+  disclaimer: string;
+}
+
+export interface GlobalShapItem {
+  feature: string;
+  mean_abs_shap: number;
+  importance_pct: number;
+}
+
+export interface GlobalShapData {
+  features: GlobalShapItem[];
+  disclaimer: string;
+}
+
 export const api = {
   getHealth: () => fetchJson<HealthData>("/api/health"),
   getModels: () => fetchJson<{ models: ModelInfo[] }>("/api/models"),
@@ -183,4 +225,7 @@ export const api = {
   getTemporalAnalysis: () => fetchJson<TemporalData>("/api/temporal-analysis"),
   getInferenceLogs: (limit: number = 50) =>
     fetchJson<{ logs: InferenceLogItem[] }>(`/api/inference-log?limit=${limit}`),
+  getTemporalSeries: () => fetchJson<TemporalSeriesData>("/api/temporal-series"),
+  getBenchmarkSummary: () => fetchJson<BenchmarkSummaryData>("/api/benchmark-summary"),
+  getGlobalShap: () => fetchJson<GlobalShapData>("/api/global-shap"),
 };

@@ -6,7 +6,7 @@ models:
     feature_set: "all"
     threshold: 0.4656
     checkpoint: "checkpoints/xgb_paper_refit_all_s0.joblib"
-    description: "Tuned gradient boosted decision tree baseline on 165 features. Resilient across regime shifts."
+    description: "Tuned gradient boosted decision tree baseline on 165 features."
 
   - id: "gcn_paper_refit_all"
     name: "GCN (Paper Refit, All Features)"
@@ -16,13 +16,3 @@ models:
     threshold: 0.7955
     checkpoint: "checkpoints/20261117-150701_gcn_paper_refit_all_s0.pt"
     description: "2-layer Graph Convolutional Network with symmetric edge passing and inverse class weighting."
-
-  - id: "control_b_paper_refit_all"
-    name: "Snapshot Context GCN (Control B, All Features)"
-    type: "gnn"
-    split: "paper_refit"
-    feature_set: "all"
-    threshold: 0.8250
-    checkpoint: "checkpoints/20261119-010704_control_b_paper_refit_all_s0.pt"
-    description: "GCN augmented with leak-free unlabelled structural stats and autoregressive prediction context."
-

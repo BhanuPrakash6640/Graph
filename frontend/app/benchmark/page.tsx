@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { api, BenchmarkData } from "@/lib/api";
+import { api, BenchmarkData, BenchmarkSummaryData } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
 import { CIPlot, CIModelItem } from "@/components/CIPlot";
@@ -52,6 +52,7 @@ function parseMarkdownTable(markdown: string): { columns: Column<any>[]; rows: a
 
 export default function BenchmarkPage() {
   const [data, setData] = useState<BenchmarkData | null>(null);
+  const [summary, setSummary] = useState<BenchmarkSummaryData | null>(null);
   const [activeTab, setActiveTab] = useState<string>("exp1_paper_refit");
   const [viewMode, setViewMode] = useState<"tables" | "comparisons" | "curves">("tables");
   const [loading, setLoading] = useState<boolean>(true);
@@ -61,8 +62,12 @@ export default function BenchmarkPage() {
     async function load() {
       try {
         setLoading(true);
-        const res = await api.getBenchmark();
+        const [res, sRes] = await Promise.all([
+          api.getBenchmark(),
+          api.getBenchmarkSummary(),
+        ]);
         setData(res);
+        setSummary(sRes);
       } catch (err: any) {
         setError(err.message || "Failed to load benchmark suite data.");
       } finally {
@@ -87,18 +92,15 @@ export default function BenchmarkPage() {
     { id: "exp2_comparisons", label: "Exp 2 Statistical CIs (Temporal vs Static)" },
   ];
 
-  // Primary model × feature-set plot data for paper_refit
-  const benchmarkCIItems: CIModelItem[] = [
-    { name: "XGBoost", featureSet: "all (165d)", mean: 0.8001, ciLo: 0.7712, ciHi: 0.829, highlight: true },
-    { name: "Random Forest", featureSet: "all (165d)", mean: 0.7812, ciLo: 0.7504, ciHi: 0.812 },
-    { name: "XGBoost", featureSet: "local only (93d)", mean: 0.6364, ciLo: 0.582, ciHi: 0.6908 },
-    { name: "Static GCN", featureSet: "all (165d)", mean: 0.6384, ciLo: 0.612, ciHi: 0.6648 },
-    { name: "EvolveGCN-Frozen", featureSet: "all (165d)", mean: 0.6348, ciLo: 0.611, ciHi: 0.6586 },
-    { name: "Static GCN", featureSet: "local only (93d)", mean: 0.507, ciLo: 0.4901, ciHi: 0.5239 },
-    { name: "EvolveGCN-Frozen", featureSet: "local only (93d)", mean: 0.5018, ciLo: 0.4866, ciHi: 0.517 },
-    { name: "EvolveGCN-O", featureSet: "all (165d)", mean: 0.2211, ciLo: 0.1681, ciHi: 0.2741 },
-    { name: "EvolveGCN-O", featureSet: "local only (93d)", mean: 0.1892, ciLo: 0.1084, ciHi: 0.27 },
-  ];
+  // Primary model × feature-set plot data served from backend summary
+  const benchmarkCIItems: CIModelItem[] = (summary?.models || []).map((m) => ({
+    name: m.name,
+    featureSet: m.feature_set,
+    mean: m.mean,
+    ciLo: m.ci_lo,
+    ciHi: m.ci_hi,
+    highlight: m.is_headline,
+  }));
 
   const activeMarkdown = data
     ? viewMode === "comparisons"
@@ -178,7 +180,7 @@ export default function BenchmarkPage() {
                 Precision-Recall Curves (Primary)
               </h3>
               <p className="text-xs text-ink-muted leading-relaxed">
-                PR curves evaluate detection performance under extreme class imbalance (~7.2% test base rate). High curves near the top-right indicate strong illicit precision without runaway false alarms.
+                PR curves evaluate detection performance under extreme class imbalance. High curves near the top-right indicate strong illicit precision without runaway false alarms.
               </p>
               <div className="border border-rule bg-paper-muted p-2 flex items-center justify-center min-h-[300px]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -194,7 +196,7 @@ export default function BenchmarkPage() {
                 <div className="text-xs font-mono text-ink-muted text-center p-4">
                   <p className="font-semibold text-ink">PR Curves Artifact</p>
                   <p className="text-[11px] mt-1">
-                    XGBoost PR-AUC: 0.8001 • Static GCN: 0.6384 • Frozen EvolveGCN: 0.6348
+                    Precision-Recall evaluation across test steps 35–49 (seed 0)
                   </p>
                 </div>
               </div>
@@ -220,7 +222,7 @@ export default function BenchmarkPage() {
                 <div className="text-xs font-mono text-ink-muted text-center p-4">
                   <p className="font-semibold text-ink">ROC Curves Artifact</p>
                   <p className="text-[11px] mt-1">
-                    XGBoost ROC-AUC: 0.9312 • Static GCN: 0.8912 • Frozen EvolveGCN: 0.8938
+                    Receiver Operating Characteristic evaluation across test steps 35–49 (seed 0)
                   </p>
                 </div>
               </div>
@@ -237,9 +239,9 @@ export default function BenchmarkPage() {
           >
             <CIPlot
               items={benchmarkCIItems}
-              baseRate={0.072}
-              title="PR-AUC on paper_refit (0.00 to 1.00)"
-              howToRead="Tabular models (XGBoost, Random Forest) lead by a significant margin over graph neural networks. Static GCN and EvolveGCN-Frozen land within the same confidence interval (diff = 0.0036), confirming the validity of the frozen-weights sanity gate."
+              baseRate={summary?.base_rate ?? 0}
+              title="PR-AUC on paper_refit (scale 0 to 1)"
+              howToRead="Tabular models (XGBoost, Random Forest) lead by a significant margin over graph neural networks. Static GCN and EvolveGCN-Frozen land within the same confidence interval, confirming the validity of the frozen-weights sanity gate."
             />
           </Section>
 

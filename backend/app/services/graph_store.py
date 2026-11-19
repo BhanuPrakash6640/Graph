@@ -181,9 +181,13 @@ class GraphStore:
                         "target": str(self.tx_ids[v]),
                     })
 
+        center_label_raw = int(self.labels[center_idx])
+        center_label_str = "illicit" if center_label_raw == 1 else "licit" if center_label_raw == 0 else "unknown"
+
         return {
             "tx_id": tx_id,
             "time_step": step,
+            "label": center_label_str,
             "k": k,
             "total_neighbors": len(neighbors_list),
             "neighbors": sorted(neighbors_list, key=lambda n: (n["distance"], n["tx_id"])),

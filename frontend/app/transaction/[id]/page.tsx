@@ -251,13 +251,13 @@ export default function TransactionCaseFilePage() {
             </div>
             <div className="flex justify-between">
               <span className="text-ink-muted">Inference latency:</span>
-              <span>{prediction?.latency_ms?.toFixed(2) || "0.15"} ms</span>
+              <span>{prediction?.latency_ms ? `${prediction.latency_ms.toFixed(2)} ms` : "—"}</span>
             </div>
           </div>
 
           <div className="pt-3 border-t border-rule text-xs text-ink-muted">
             <p className="leading-relaxed">
-              Payments scored above the model&apos;s alert line ({threshold.toFixed(3)}) trigger automated risk alerts for compliance investigation.
+              Payments scored at or above the model&apos;s alert line ({threshold.toFixed(3)}) are flagged as illicit under the decision threshold.
             </p>
           </div>
         </div>

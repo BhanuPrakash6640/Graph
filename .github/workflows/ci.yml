@@ -55,6 +55,11 @@ jobs:
         run: |
           npm ci
 
+      - name: Check No Hardcoded Numbers
+        working-directory: frontend
+        run: |
+          npm run check:numbers
+
       - name: Lint Next.js
         working-directory: frontend
         run: |

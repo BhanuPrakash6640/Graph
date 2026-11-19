@@ -67,6 +67,7 @@ class NeighborNode(BaseModel):
 class NeighborsResponse(BaseModel):
     tx_id: str
     time_step: int
+    label: Literal["illicit", "licit", "unknown"] = "unknown"
     k: int
     total_neighbors: int
     neighbors: list[NeighborNode]
@@ -138,3 +139,45 @@ class ExampleItem(BaseModel):
 class ExamplesResponse(BaseModel):
     examples: list[ExampleItem]
     disclaimer: str
+
+
+class TemporalStepScore(BaseModel):
+    step: int
+    illicit: int
+    xgb: float
+    gcn: float
+    evolve: float
+
+
+class TemporalSeriesResponse(BaseModel):
+    steps: list[TemporalStepScore]
+    regime_shift_start: int = 43
+    disclaimer: str
+
+
+class BenchmarkSummaryModel(BaseModel):
+    name: str
+    feature_set: str
+    mean: float
+    ci_lo: float
+    ci_hi: float
+    is_headline: bool = False
+
+
+class BenchmarkSummaryResponse(BaseModel):
+    models: list[BenchmarkSummaryModel]
+    base_rate: float = 0.065
+    key_takeaway: str
+    disclaimer: str
+
+
+class GlobalShapFeature(BaseModel):
+    feature: str
+    mean_abs_shap: float
+    importance_pct: float
+
+
+class GlobalShapResponse(BaseModel):
+    features: list[GlobalShapFeature]
+    disclaimer: str
+

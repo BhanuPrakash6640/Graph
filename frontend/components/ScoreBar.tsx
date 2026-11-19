@@ -22,15 +22,15 @@ export function ScoreBar({
   return (
     <div className={`w-full font-mono text-xs ${className}`}>
       {showLabels && (
-        <div className="flex items-center justify-between mb-1.5 text-xs text-ink">
-          <span>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-1.5 text-xs text-ink">
+          <span className="flex-shrink-0">
             Risk score:{" "}
             <strong className={isAlert ? "text-illicit font-bold" : "text-licit font-bold"}>
               {clampedScore.toFixed(4)}
             </strong>{" "}
-            <span className="text-ink-muted">out of 1.0000</span>
+            <span className="text-ink-muted">(scale 0 to 1)</span>
           </span>
-          <span className="text-ink-muted">
+          <span className="text-ink-muted flex-shrink-0">
             Alert line: <span className="font-semibold text-ink">{clampedThreshold.toFixed(3)}</span>
           </span>
         </div>

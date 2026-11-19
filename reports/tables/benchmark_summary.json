@@ -1,0 +1,87 @@
+{
+  "models": [
+    {
+      "name": "XGBoost",
+      "feature_set": "all features, 165d",
+      "mean": 0.7918,
+      "ci_lo": 0.6019,
+      "ci_hi": 0.9015,
+      "is_headline": true
+    },
+    {
+      "name": "Random Forest",
+      "feature_set": "all features, 165d",
+      "mean": 0.785,
+      "ci_lo": 0.5962,
+      "ci_hi": 0.8973,
+      "is_headline": false
+    },
+    {
+      "name": "XGBoost",
+      "feature_set": "local only, 93d",
+      "mean": 0.7785,
+      "ci_lo": 0.59,
+      "ci_hi": 0.8906,
+      "is_headline": false
+    },
+    {
+      "name": "Random Forest",
+      "feature_set": "local only, 93d",
+      "mean": 0.7754,
+      "ci_lo": 0.5829,
+      "ci_hi": 0.8915,
+      "is_headline": false
+    },
+    {
+      "name": "Static GCN",
+      "feature_set": "all features, 165d",
+      "mean": 0.6166,
+      "ci_lo": 0.3945,
+      "ci_hi": 0.7569,
+      "is_headline": false
+    },
+    {
+      "name": "EvolveGCN-Frozen",
+      "feature_set": "all features, 165d",
+      "mean": 0.6345,
+      "ci_lo": 0.4203,
+      "ci_hi": 0.7667,
+      "is_headline": false
+    },
+    {
+      "name": "Static GCN",
+      "feature_set": "local only, 93d",
+      "mean": 0.4994,
+      "ci_lo": 0.2624,
+      "ci_hi": 0.6679,
+      "is_headline": false
+    },
+    {
+      "name": "EvolveGCN-Frozen",
+      "feature_set": "local only, 93d",
+      "mean": 0.4811,
+      "ci_lo": 0.2489,
+      "ci_hi": 0.6522,
+      "is_headline": false
+    },
+    {
+      "name": "EvolveGCN-O",
+      "feature_set": "all features, 165d",
+      "mean": 0.1804,
+      "ci_lo": 0.0813,
+      "ci_hi": 0.2877,
+      "is_headline": false
+    },
+    {
+      "name": "EvolveGCN-O",
+      "feature_set": "local only, 93d",
+      "mean": 0.17,
+      "ci_lo": 0.0969,
+      "ci_hi": 0.2529,
+      "is_headline": false
+    }
+  ],
+  "base_rate": 0.065,
+  "key_takeaway": "Tabular XGBoost leads graph neural networks on the primary chronological split. The 95% block-bootstrap confidence interval strictly excludes zero.",
+  "disclaimer": "Evaluated on paper_refit test partition (time steps 35-49). Block bootstrap resamples time steps with replacement."
+}

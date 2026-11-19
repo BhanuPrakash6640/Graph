@@ -72,14 +72,22 @@ function ExplorerContent() {
     const elements: cytoscape.ElementDefinition[] = [];
 
     // Focus / Center Node
+    const centerLabel = graphData.label || "unknown";
+    const centerColor =
+      centerLabel === "illicit"
+        ? "#B42318"
+        : centerLabel === "licit"
+        ? "#1D4ED8"
+        : "#9CA3AF";
+
     elements.push({
       data: {
         id: graphData.tx_id,
         label: `★ ${graphData.tx_id}`,
         full_tx: graphData.tx_id,
-        label_class: "center",
+        label_class: centerLabel,
         step: graphData.time_step,
-        color: "#0F766E",
+        color: centerColor,
         isCenter: true,
         distance: 0,
       },
@@ -133,7 +141,7 @@ function ExplorerContent() {
             "font-family": "IBM Plex Mono, Menlo, monospace",
             "font-size": "10px",
             "text-valign": "bottom",
-            "text-margin-y": 4,
+            "text-margin-y": 6,
             color: "#111827",
             "background-color": "data(color)",
             width: "mapData(distance, 0, 2, 32, 20)",
@@ -143,22 +151,24 @@ function ExplorerContent() {
           },
         },
         {
-          selector: "node[isCenter]",
-          style: {
-            width: 36,
-            height: 36,
-            "border-width": 3,
-            "border-color": "#111827",
-            "font-weight": "bold",
-            "z-index": 10,
-          },
-        },
-        {
           selector: 'node[label_class = "unknown"]',
           style: {
             "border-style": "dashed",
             "border-color": "#9CA3AF",
             "background-color": "#E5E7EB",
+          },
+        },
+        {
+          selector: "node[isCenter]",
+          style: {
+            width: 38,
+            height: 38,
+            "border-width": 3.5,
+            "border-color": "#000000",
+            "border-style": "solid",
+            "background-color": "data(color)",
+            "font-weight": "bold",
+            "z-index": 999,
           },
         },
         {
@@ -191,6 +201,7 @@ function ExplorerContent() {
               minNodeSpacing: 50,
               avoidOverlap: true,
               animate: false,
+              padding: 40,
             }
           : {
               name: "breadthfirst",
@@ -198,6 +209,7 @@ function ExplorerContent() {
               spacingFactor: 1.5,
               roots: [`node[id = "${graphData.tx_id}"]`],
               animate: false,
+              padding: 40,
             } as any,
       userZoomingEnabled: true,
       userPanningEnabled: true,

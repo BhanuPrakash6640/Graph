@@ -77,7 +77,7 @@ export function DataTable<T extends Record<string, any>>({
               return (
                 <th
                   key={col.key}
-                  className={`py-2 px-3 font-mono font-semibold text-ink uppercase tracking-wider text-[11px] ${alignClass}`}
+                  className={`py-2 px-3 font-mono font-semibold text-ink uppercase tracking-wider text-[11px] whitespace-nowrap ${alignClass}`}
                 >
                   {col.sortable !== false ? (
                     <button
@@ -124,7 +124,7 @@ export function DataTable<T extends Record<string, any>>({
                   return (
                     <td
                       key={col.key}
-                      className={`py-2.5 px-3 text-ink tabular-nums ${alignClass}`}
+                      className={`py-2.5 px-3 text-ink tabular-nums whitespace-nowrap ${alignClass}`}
                     >
                       {col.render ? col.render(row) : String(row[col.key] ?? "—")}
                     </td>

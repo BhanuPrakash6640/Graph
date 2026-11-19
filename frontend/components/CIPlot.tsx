@@ -12,7 +12,7 @@ export interface CIModelItem {
 
 interface CIPlotProps {
   items: CIModelItem[];
-  baseRate?: number; // e.g. 0.072 (random chance)
+  baseRate?: number; // e.g. 0.065 (random chance)
   baseRateLabel?: string;
   minScale?: number;
   maxScale?: number;
@@ -24,8 +24,8 @@ interface CIPlotProps {
 
 export function CIPlot({
   items,
-  baseRate = 0.072,
-  baseRateLabel = "Test base rate ≈ 0.072 (random chance)",
+  baseRate = 0.065,
+  baseRateLabel = "Test base rate ≈ 0.065 (random chance)",
   minScale = 0.0,
   maxScale = 1.0,
   title,
@@ -53,22 +53,9 @@ export function CIPlot({
       )}
 
       {/* Axis and plot area */}
-      <div className="relative pt-2 pb-6">
-        {/* Base rate reference line */}
-        {baseRate !== undefined && (
-          <div
-            className="absolute top-0 bottom-6 w-px border-l border-dashed border-ink-muted/70 z-10"
-            style={{ left: `${toPct(baseRate)}%` }}
-            title={baseRateLabel}
-          >
-            <span className="absolute -bottom-5 -translate-x-1/2 whitespace-nowrap text-[10px] font-mono text-ink-muted">
-              base rate ({baseRate.toFixed(3)})
-            </span>
-          </div>
-        )}
-
+      <div className="pt-2 pb-2">
         {/* Model Rows */}
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           {items.map((m) => {
             const leftPct = toPct(m.ciLo);
             const rightPct = toPct(m.ciHi);
@@ -76,7 +63,7 @@ export function CIPlot({
             const widthPct = Math.max(0.5, rightPct - leftPct);
 
             return (
-              <div key={m.name} className="flex flex-col sm:flex-row sm:items-center text-xs">
+              <div key={`${m.name}_${m.featureSet}`} className="flex flex-col sm:flex-row sm:items-center text-xs">
                 {/* Model Label */}
                 <div className="w-48 flex-shrink-0 font-mono text-ink mb-1 sm:mb-0">
                   <span className={m.highlight ? "font-bold text-accent" : "font-medium"}>
@@ -91,6 +78,14 @@ export function CIPlot({
 
                 {/* Plot track */}
                 <div className="relative flex-1 h-6 bg-paper-muted border border-rule">
+                  {/* Base rate reference line inside track */}
+                  {baseRate !== undefined && (
+                    <div
+                      className="absolute top-0 bottom-0 w-px border-l border-dashed border-ink-muted/80 z-0 pointer-events-none"
+                      style={{ left: `${toPct(baseRate)}%` }}
+                    />
+                  )}
+
                   {/* Whisker line */}
                   <div
                     className="absolute top-1/2 -translate-y-1/2 h-0.5 bg-ink"
@@ -132,15 +127,32 @@ export function CIPlot({
             );
           })}
         </div>
-      </div>
 
-      {/* Axis ticks */}
-      <div className="flex justify-between text-[10px] font-mono text-ink-muted border-t border-rule pt-1.5">
-        <span>0.00</span>
-        <span>0.25</span>
-        <span>0.50</span>
-        <span>0.75</span>
-        <span>1.00 (Higher is better)</span>
+        {/* Ticks & Base-rate aligned with flex-1 track column */}
+        <div className="flex flex-col sm:flex-row text-[10px] font-mono text-ink-muted border-t border-rule pt-2 mt-3">
+          <div className="w-48 flex-shrink-0 hidden sm:block" />
+          <div className="relative flex-1 h-5">
+            {/* Base rate tick label */}
+            {baseRate !== undefined && (
+              <div
+                className="absolute top-0 bottom-0 w-px border-l border-dashed border-ink-muted/80"
+                style={{ left: `${toPct(baseRate)}%` }}
+              >
+                <span className="absolute top-2.5 -translate-x-1/2 whitespace-nowrap text-[9px] font-mono text-ink-muted bg-paper px-0.5">
+                  base rate ({baseRate.toFixed(3)})
+                </span>
+              </div>
+            )}
+            <span className="absolute left-0 -translate-x-0">0.00</span>
+            <span className="absolute left-1/4 -translate-x-1/2">0.25</span>
+            <span className="absolute left-1/2 -translate-x-1/2">0.50</span>
+            <span className="absolute left-3/4 -translate-x-1/2">0.75</span>
+            <span className="absolute right-0 translate-x-0">1.00</span>
+          </div>
+          <div className="w-28 flex-shrink-0 hidden sm:block text-right">
+            <span>(Higher is better)</span>
+          </div>
+        </div>
       </div>
 
       {/* How to read this details */}
@@ -165,4 +177,3 @@ export function CIPlot({
     </div>
   );
 }
-

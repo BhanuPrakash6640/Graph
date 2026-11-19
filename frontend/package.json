@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint && node scripts/check-no-hardcoded-numbers.js",
+    "check:numbers": "node scripts/check-no-hardcoded-numbers.js",
+    "test": "node scripts/check-no-hardcoded-numbers.js"
   },
   "dependencies": {
     "clsx": "^2.1.1",

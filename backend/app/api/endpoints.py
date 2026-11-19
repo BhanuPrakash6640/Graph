@@ -12,11 +12,15 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from backend.app.schemas import (
     BenchmarkResponse,
+    BenchmarkSummaryModel,
+    BenchmarkSummaryResponse,
     ExampleItem,
     ExamplesResponse,
     ExperimentRunRequest,
     ExperimentRunResponse,
     ExplanationResponse,
+    GlobalShapFeature,
+    GlobalShapResponse,
     HealthResponse,
     InferenceLogItem,
     InferenceLogResponse,
@@ -26,6 +30,8 @@ from backend.app.schemas import (
     PredictRequest,
     PredictResponse,
     TemporalAnalysisResponse,
+    TemporalSeriesResponse,
+    TemporalStepScore,
     TransactionResponse,
 )
 
@@ -321,4 +327,70 @@ def get_examples() -> ExamplesResponse:
 
     _CACHED_EXAMPLES = examples
     return ExamplesResponse(examples=examples, disclaimer=DISCLAIMER)
+
+
+@router.get("/temporal-series", response_model=TemporalSeriesResponse)
+def get_temporal_series() -> TemporalSeriesResponse:
+    """Returns chronological per-step test PR-AUC scores and illicit counts."""
+    path = Path("reports/tables/temporal_series.json")
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        steps = [TemporalStepScore(**s) for s in data.get("steps", [])]
+        return TemporalSeriesResponse(
+            steps=steps,
+            regime_shift_start=data.get("regime_shift_start", 43),
+            disclaimer=DISCLAIMER,
+        )
+    return TemporalSeriesResponse(steps=[], regime_shift_start=43, disclaimer=DISCLAIMER)
+
+
+@router.get("/benchmark-summary", response_model=BenchmarkSummaryResponse)
+def get_benchmark_summary() -> BenchmarkSummaryResponse:
+    """Returns paper_refit summary per model family with block-bootstrap 95% CIs."""
+    path = Path("reports/tables/benchmark_summary.json")
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        models = [BenchmarkSummaryModel(**m) for m in data.get("models", [])]
+        return BenchmarkSummaryResponse(
+            models=models,
+            base_rate=data.get("base_rate", 0.065),
+            key_takeaway=data.get("key_takeaway", "Tabular XGBoost leads graph neural networks."),
+            disclaimer=data.get("disclaimer", DISCLAIMER),
+        )
+    return BenchmarkSummaryResponse(
+        models=[],
+        base_rate=0.065,
+        key_takeaway="Benchmark summary pending computation.",
+        disclaimer=DISCLAIMER,
+    )
+
+
+@router.get("/global-shap", response_model=GlobalShapResponse)
+def get_global_shap() -> GlobalShapResponse:
+    """Returns global TreeExplainer SHAP importance from saved explainer output."""
+    path = Path("reports/tables/global_shap.json")
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as f:
+            raw_list = json.load(f)
+        # Compute percentage importance relative to max or sum
+        max_val = max([item["mean_abs_shap"] for item in raw_list]) if raw_list else 1.0
+        features = [
+            GlobalShapFeature(
+                feature=item["feature"],
+                mean_abs_shap=round(float(item["mean_abs_shap"]), 4),
+                importance_pct=round((float(item["mean_abs_shap"]) / max_val) * 100, 1),
+            )
+            for item in raw_list
+        ]
+        return GlobalShapResponse(
+            features=features,
+            disclaimer="All 165 features anonymized in Elliptic dataset (Weber et al., 2019).",
+        )
+    return GlobalShapResponse(
+        features=[],
+        disclaimer="Global SHAP importances pending computation.",
+    )
+
 

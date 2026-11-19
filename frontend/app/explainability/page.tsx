@@ -3,7 +3,7 @@
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, ExplanationData, ExampleItem } from "@/lib/api";
+import { api, ExplanationData, ExampleItem, GlobalShapItem } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
 import { ScoreBar } from "@/components/ScoreBar";
@@ -20,18 +20,6 @@ import {
   Info,
 } from "lucide-react";
 
-// Global top SHAP feature drivers from XGBoost tree analysis
-const GLOBAL_SHAP_FEATURES = [
-  { name: "local_53", importance: 0.285, plainRole: "Transaction value & fee ratio dynamics" },
-  { name: "local_90", importance: 0.192, plainRole: "Input address reuse and script complexity" },
-  { name: "local_76", importance: 0.145, plainRole: "Output count and value distribution entropy" },
-  { name: "agg_102", importance: 0.118, plainRole: "Mean transaction volume of 1-hop predecessor payments" },
-  { name: "local_48", importance: 0.088, plainRole: "Locktime and version metadata patterns" },
-  { name: "agg_124", importance: 0.065, plainRole: "Neighboring output address dispersion" },
-  { name: "local_12", importance: 0.054, plainRole: "Relative timestamp displacement within snapshot" },
-  { name: "agg_158", importance: 0.043, plainRole: "Connected peer transaction fee standard deviation" },
-];
-
 function ExplainabilityContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -41,11 +29,13 @@ function ExplainabilityContent() {
   const [selectedModel, setSelectedModel] = useState<"xgb" | "gcn">("xgb");
   const [explanation, setExplanation] = useState<ExplanationData | null>(null);
   const [examples, setExamples] = useState<ExampleItem[]>([]);
+  const [globalShap, setGlobalShap] = useState<GlobalShapItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.getExamples().then((d) => setExamples(d.examples)).catch(() => {});
+    api.getGlobalShap().then((d) => setGlobalShap(d.features)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -84,28 +74,28 @@ function ExplainabilityContent() {
       >
         <div className="p-5 bg-paper-card border border-rule space-y-4">
           <div className="text-xs text-ink leading-relaxed">
-            <span className="font-semibold">Key Finding: </span>
-            Local transaction features (1–93) drive over 65% of XGBoost&apos;s illicit attributions. Aggregated neighbor context features (94–165) provide secondary confirmation. Feature names are irreversibly anonymised by Weber et al. (2019).
+            <span className="font-semibold">Shared Anonymisation Note: </span>
+            All 165 features are irreversibly anonymised by Weber et al. (2019). Codes <code>local_1</code> through <code>local_93</code> represent local transaction attributes (time step, inputs, outputs, fee). Codes <code>agg_1</code> through <code>agg_72</code> represent aggregated 1-hop neighbor attributes.
           </div>
 
           <div className="space-y-2.5 pt-2">
-            {GLOBAL_SHAP_FEATURES.map((f) => (
-              <div key={f.name} className="space-y-1">
+            {globalShap.slice(0, 10).map((f) => (
+              <div key={f.feature} className="space-y-1">
                 <div className="flex items-baseline justify-between text-xs font-mono">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-ink">{f.name}</span>
-                    <span className="text-[11px] text-ink-muted font-sans hidden sm:inline">
-                      — {f.plainRole}
+                    <span className="font-bold text-ink">{f.feature}</span>
+                    <span className="text-[11px] text-ink-muted">
+                      ({f.feature.startsWith("local") ? "local transaction attribute" : "aggregated 1-hop neighbor attribute"})
                     </span>
                   </div>
                   <span className="text-ink tabular-nums font-semibold">
-                    {(f.importance * 100).toFixed(1)}% weight
+                    |SHAP| {f.mean_abs_shap.toFixed(3)}
                   </span>
                 </div>
                 <div className="h-2 bg-paper-muted border border-rule overflow-hidden">
                   <div
                     className="h-full bg-accent"
-                    style={{ width: `${(f.importance / 0.3) * 100}%` }}
+                    style={{ width: `${Math.min(100, Math.max(2, f.importance_pct))}%` }}
                   />
                 </div>
               </div>

@@ -59,12 +59,12 @@ export function GraphCanvas({
       });
     }
 
-    nodes.forEach((n) => {
+      nodes.forEach((n) => {
       const isCenter = n.tx_id === centerTxId;
       let color = "#6B7280"; // unknown
       if (n.label === "illicit") color = "#B42318";
       if (n.label === "licit") color = "#1D4ED8";
-      if (isCenter) color = n.label === "illicit" ? "#B42318" : n.label === "licit" ? "#1D4ED8" : "#0F766E";
+      if (isCenter) color = n.label === "illicit" ? "#B42318" : n.label === "licit" ? "#1D4ED8" : "#9CA3AF";
 
       elements.push({
         data: {
@@ -76,7 +76,7 @@ export function GraphCanvas({
           distance: isCenter ? 0 : n.distance || 1,
           color: color,
           borderColor: isCenter ? "#111827" : "#FFFFFF",
-          borderWidth: isCenter ? 3 : 1.5,
+          borderWidth: isCenter ? 3.5 : 1.5,
           rawNode: n,
         },
       });
@@ -107,7 +107,7 @@ export function GraphCanvas({
             "font-family": "IBM Plex Mono, Menlo, monospace",
             "font-size": "10px",
             "text-valign": "bottom",
-            "text-margin-y": 4,
+            "text-margin-y": 6,
             color: "#111827",
             "background-color": "data(color)",
             "border-width": "data(borderWidth)",
@@ -117,21 +117,23 @@ export function GraphCanvas({
           },
         },
         {
-          selector: "node[isCenter]",
-          style: {
-            width: 32,
-            height: 32,
-            "font-weight": "bold",
-            "border-color": "#111827",
-            "border-width": 3,
-          },
-        },
-        {
           selector: "node[nodeLabel = 'unknown']",
           style: {
             "border-style": "dashed",
             "border-color": "#9CA3AF",
             "background-color": "#E5E7EB",
+          },
+        },
+        {
+          selector: "node[isCenter]",
+          style: {
+            width: 34,
+            height: 34,
+            "font-weight": "bold",
+            "border-color": "#111827",
+            "border-width": 3.5,
+            "border-style": "solid",
+            "z-index": 99,
           },
         },
         {

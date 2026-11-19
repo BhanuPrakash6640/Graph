@@ -152,3 +152,30 @@ def test_examples(client: TestClient):
     categories = [e["category"] for e in data["examples"]]
     assert "True Positive" in categories
     assert "False Positive" in categories
+
+
+def test_new_endpoints(client: TestClient):
+    # 1. Temporal series
+    resp_series = client.get("/api/temporal-series")
+    assert resp_series.status_code == 200
+    s_data = resp_series.json()
+    assert "steps" in s_data
+    assert len(s_data["steps"]) == 15
+    assert s_data["regime_shift_start"] == 43
+
+    # 2. Benchmark summary
+    resp_sum = client.get("/api/benchmark-summary")
+    assert resp_sum.status_code == 200
+    b_data = resp_sum.json()
+    assert "models" in b_data
+    assert len(b_data["models"]) >= 8
+    assert b_data["base_rate"] == 0.065
+
+    # 3. Global SHAP
+    resp_shap = client.get("/api/global-shap")
+    assert resp_shap.status_code == 200
+    g_data = resp_shap.json()
+    assert "features" in g_data
+    assert len(g_data["features"]) >= 10
+    assert g_data["features"][0]["feature"] == "local_53"
+
