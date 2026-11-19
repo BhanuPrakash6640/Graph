@@ -702,16 +702,17 @@ def run_temporal_experiment(config_path: str = "experiments/configs/temporal.yam
                         "at_05": metrics_at_05,
                     }
 
-                    def predict_fn(x_in):
+                    _sc_edge_index = snapshot_cache[test_steps[0]].edge_index
+                    def predict_fn(x_in, _m=model, _ei=_sc_edge_index):
                         with torch.no_grad():
                             if model_name.lower() in ("evolvegcn", "evolvegcn_frozen"):
-                                w1, w2 = model.get_initial_weights()
-                                return model.conv1(x_in, snapshot_cache[test_steps[0]].edge_index, w1)
+                                w1, w2 = _m.get_initial_weights()
+                                return _m.conv1(x_in, _ei, w1)
                             elif model_name.lower() in ("gcn", "static_gcn"):
-                                return model.conv1(x_in, snapshot_cache[test_steps[0]].edge_index)
+                                return _m.conv1(x_in, _ei)
                             else:
                                 ctx_dummy = torch.zeros(CONTEXT_DIM, device=device)
-                                return model(x_in, snapshot_cache[test_steps[0]].edge_index, context=ctx_dummy)
+                                return _m(x_in, _ei, context=ctx_dummy)
 
                     latency_stats = measure_latency(predict_fn, snapshot_cache[test_steps[0]].x, repeats=15)
                     timing_info = {
@@ -869,16 +870,17 @@ def run_temporal_experiment(config_path: str = "experiments/configs/temporal.yam
                         "at_05": metrics_at_05,
                     }
 
-                    def predict_fn(x_in):
+                    _refit_ei = refit_snapshot_cache[refit_test_steps[0]].edge_index
+                    def predict_fn(x_in, _m=model, _ei=_refit_ei):
                         with torch.no_grad():
                             if model_name.lower() in ("evolvegcn", "evolvegcn_frozen"):
-                                w1, w2 = model.get_initial_weights()
-                                return model.conv1(x_in, refit_snapshot_cache[refit_test_steps[0]].edge_index, w1)
+                                w1, w2 = _m.get_initial_weights()
+                                return _m.conv1(x_in, _ei, w1)
                             elif model_name.lower() in ("gcn", "static_gcn"):
-                                return model.conv1(x_in, refit_snapshot_cache[refit_test_steps[0]].edge_index)
+                                return _m.conv1(x_in, _ei)
                             else:
                                 ctx_dummy = torch.zeros(CONTEXT_DIM, device=device)
-                                return model(x_in, refit_snapshot_cache[refit_test_steps[0]].edge_index, context=ctx_dummy)
+                                return _m(x_in, _ei, context=ctx_dummy)
 
                     latency_stats = measure_latency(predict_fn, refit_snapshot_cache[refit_test_steps[0]].x, repeats=15)
                     timing_info = {

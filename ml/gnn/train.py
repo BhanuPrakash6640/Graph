@@ -273,7 +273,9 @@ def run_single_gnn(
         threshold = 0.5
 
     # 6. Test evaluation & Latency profiling
-    predict_fn = lambda x: model(x, test_graph.edge_index)
+    def predict_fn(x, _m=model, _edge_index=test_graph.edge_index):
+        return _m(x, _edge_index)
+
     latency = measure_latency(predict_fn, test_graph.x, repeats=latency_repeats)
 
     att_weights = None

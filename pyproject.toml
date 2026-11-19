@@ -14,3 +14,28 @@ include = ["ml*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = [
+    ".git",
+    "__pycache__",
+    "experiments/results",
+    "checkpoints",
+    "data",
+    "frontend",
+    "docs",
+    "*.ipynb",
+]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = [
+    "E501",  # Line too long
+    "E731",  # Lambda assignment
+    "F401",  # Unused imports (cleaned or deferred)
+    "F841",  # Unused variable
+    "E402",  # Module import not at top of file
+    "F811",  # Redefined while unused
+]
