@@ -297,10 +297,12 @@ def run_exp5_ablations(
     }
 
     exp_dir = Path(results_base) / exp_name
-    existing_runs = list(exp_dir.glob("*/predictions.parquet")) if exp_dir.exists() else []
+    exp2_dir = Path(results_base) / "exp2_temporal"
+    existing_exp5_runs = list(exp_dir.glob("*/predictions.parquet")) if exp_dir.exists() else []
+    existing_exp2_frozen = list(exp2_dir.glob("*_evolvegcn_frozen_paper_refit_all_s*/predictions.parquet")) if exp2_dir.exists() else []
 
-    if len(existing_runs) >= 30 and not rerun:
-        logger.info("Found %d completed ablation runs in %s, loading from disk...", len(existing_runs), exp_dir)
+    if len(existing_exp5_runs) >= 25 and len(existing_exp2_frozen) >= 5 and not rerun:
+        logger.info("Found completed ablation runs (25 in %s, 5 in %s), loading from disk...", exp_dir, exp2_dir)
         rows = []
         model_to_meta = {
             "xgb_agg": ("1. Features", var_xgb_agg, "xgb_all"),
@@ -308,7 +310,6 @@ def run_exp5_ablations(
             "gcn_topo": ("2. Topology Only", var_gcn_topo, "gcn_all"),
             "gcn_1hop": ("3. Neighbour Hops", var_gcn_1hop, "gcn_all"),
             "gcn_directed": ("4. Edge Direction", var_gcn_dir, "gcn_all"),
-            "evolvegcn_frozen": ("5. Temporal Dynamics", var_evolve_frozen, "evolvegcn_evolving"),
         }
         for run_dir in sorted(exp_dir.iterdir()):
             if not run_dir.is_dir() or run_dir.name.startswith("_"):
@@ -319,21 +320,42 @@ def run_exp5_ablations(
             if not (cfg_p.exists() and met_p.exists() and prd_p.exists()):
                 continue
             cfg = yaml.safe_load(cfg_p.read_text(encoding="utf-8"))
-            m = json.loads(met_p.read_text(encoding="utf-8"))
+            met = json.loads(met_p.read_text(encoding="utf-8"))
             pred_df = pd.read_parquet(prd_p)
             model_key = cfg.get("model", "")
             if model_key in model_to_meta:
                 abl_dim, var_name, ref_m = model_to_meta[model_key]
                 preds_by_variant[var_name].append(pred_df)
-                at_val = m.get("at_val_threshold", m)
+                at_val = met.get("at_val_threshold", met)
                 rows.append({
                     "ablation": abl_dim,
                     "variant": var_name,
                     "ref_model": ref_m,
                     "seed": cfg.get("seed", 0),
-                    "pr_auc": at_val.get("pr_auc", m.get("pr_auc", 0.0)),
-                    "f1": at_val.get("f1", m.get("f1", 0.0)),
+                    "pr_auc": at_val.get("pr_auc", met.get("pr_auc", 0.0)),
+                    "f1": at_val.get("f1", met.get("f1", 0.0)),
                 })
+
+        # Load frozen EvolveGCN runs directly from exp2_temporal
+        for seed in seeds:
+            pat = f"*_evolvegcn_frozen_paper_refit_all_s{seed}"
+            matches = sorted(list(exp2_dir.glob(pat)))
+            if matches:
+                run_d = matches[-1]
+                met = json.loads((run_d / "metrics.json").read_text(encoding="utf-8"))
+                pred_df = pd.read_parquet(run_d / "predictions.parquet")
+                test_pred_df = pred_df[pred_df["part"] == "test"].copy()
+                preds_by_variant[var_evolve_frozen].append(test_pred_df)
+                at_val = met.get("at_val_threshold", met)
+                rows.append({
+                    "ablation": "5. Temporal Dynamics",
+                    "variant": var_evolve_frozen,
+                    "ref_model": "evolvegcn_evolving",
+                    "seed": seed,
+                    "pr_auc": at_val.get("pr_auc", met.get("pr_auc", 0.0)),
+                    "f1": at_val.get("f1", met.get("f1", 0.0)),
+                })
+
         df_abl = pd.DataFrame(rows)
         return generate_exp5_table(preds_by_variant, df_abl, results_base, out_path)
 
@@ -785,77 +807,30 @@ def run_exp5_ablations(
     # ---------------------------------------------------------
     # 5. Temporal Dynamics: EvolveGCN Frozen (evolve=False)
     # ---------------------------------------------------------
-    logger.info("Running Ablation 5: EvolveGCN Frozen Mode...")
-    from ml.temporal.train import build_snapshot_cache, predict_test_snapshots, train_one_epoch
-
-    refit_steps = sorted(list(view_all_r.split.train_steps))
-    refit_test_steps = sorted(list(view_all_r.split.test_steps))
-    all_snap_steps = sorted(list(set(refit_steps + refit_test_steps)))
-    snap_cache = build_snapshot_cache(view_all_r, all_snap_steps, device)
-
-    crit_frozen = nn.CrossEntropyLoss(weight=torch.tensor([1.0, scale_pos], device=device))
-
+    logger.info("Loading Ablation 5: EvolveGCN Frozen Mode directly from exp2_temporal...")
     var_evolve_frozen = "EvolveGCN (frozen weights)"
     preds_by_variant[var_evolve_frozen] = []
 
+    exp2_dir = Path(results_base) / "exp2_temporal"
     for seed in seeds:
-        set_seed(seed)
-        model_f = EvolveGCNO(in_channels=165, hidden_channels=128, out_channels=2, dropout=0.3, evolve=False).to(device)
-        opt_f = torch.optim.Adam(model_f.parameters(), lr=0.005, weight_decay=5e-4)
-
-        rec_cfg = {
-            "experiment": exp_name,
-            "model": "evolvegcn_frozen",
-            "split": "paper_refit",
-            "feature_set": "all",
+        pat = f"*_evolvegcn_frozen_paper_refit_all_s{seed}"
+        matches = sorted(list(exp2_dir.glob(pat)))
+        if not matches:
+            raise FileNotFoundError(f"Missing exp2 frozen run for seed {seed} matching {pat} in {exp2_dir}")
+        run_d = matches[-1]
+        met = json.loads((run_d / "metrics.json").read_text(encoding="utf-8"))
+        pred_df = pd.read_parquet(run_d / "predictions.parquet")
+        test_pred_df = pred_df[pred_df["part"] == "test"].copy()
+        preds_by_variant[var_evolve_frozen].append(test_pred_df)
+        at_val = met.get("at_val_threshold", met)
+        rows.append({
             "ablation": "5. Temporal Dynamics",
+            "variant": var_evolve_frozen,
+            "ref_model": "evolvegcn_evolving",
             "seed": seed,
-            "val_threshold": 0.5,
-        }
-        with RunRecorder(experiment=exp_name, config=rec_cfg, base_dir=results_base) as recorder:
-            st = time.perf_counter()
-            for _ in range(100):
-                train_one_epoch(
-                    model=model_f,
-                    model_name="evolvegcn",
-                    train_steps=refit_steps,
-                    snapshot_cache=snap_cache,
-                    criterion=crit_frozen,
-                    optimizer=opt_f,
-                    window_size=5,
-                    device=device,
-                )
-            tr_dur = time.perf_counter() - st
-
-            st_ev = time.perf_counter()
-            test_nodes, test_steps_arr, test_y_arr, test_scores, test_parts = predict_test_snapshots(
-                model=model_f,
-                model_name="evolvegcn",
-                train_steps=refit_steps,
-                val_steps=[],
-                test_steps=refit_test_steps,
-                snapshot_cache=snap_cache,
-                device=device,
-            )
-            ev_ms = (time.perf_counter() - st_ev) * 1000.0
-
-            test_mask = test_parts == "test"
-            m = compute_metrics(test_y_arr[test_mask], test_scores[test_mask], threshold=0.5)
-            recorder.log_metrics({"val_threshold": 0.5, "at_val_threshold": m, "pr_auc": float(m["pr_auc"]), "f1": float(m["f1"])})
-            recorder.log_timing({"train_wall_s": float(tr_dur), "test_eval_ms": float(ev_ms)})
-
-            pred_df = pd.DataFrame({
-                "node_idx": test_nodes[test_mask],
-                "txId": data.tx_ids[test_nodes[test_mask]],
-                "time_step": test_steps_arr[test_mask],
-                "y": test_y_arr[test_mask],
-                "score": test_scores[test_mask].astype(np.float32),
-                "part": "test",
-            })
-            recorder.log_predictions(pred_df)
-            preds_by_variant[var_evolve_frozen].append(pred_df)
-
-        rows.append({"ablation": "5. Temporal Dynamics", "variant": var_evolve_frozen, "ref_model": "evolvegcn_evolving", "seed": seed, "pr_auc": m["pr_auc"], "f1": m["f1"]})
+            "pr_auc": at_val.get("pr_auc", met.get("pr_auc", 0.0)),
+            "f1": at_val.get("f1", met.get("f1", 0.0)),
+        })
 
     df_abl = pd.DataFrame(rows)
 
