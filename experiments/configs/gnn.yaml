@@ -1,0 +1,41 @@
+experiment: exp1_gnn
+
+data:
+  processed_dir: data/processed
+
+models:
+  - mlp
+  - gcn
+  - sage_mean
+  - sage_max
+  - gat
+
+feature_sets:
+  - local
+  - all
+
+splits:
+  - paper
+  - fc_24
+  - fc_29
+  - fc_34
+  - fc_39
+  - fc_44
+
+refit_splits:
+  - paper_refit
+
+seeds: [0, 1, 2, 3, 4]
+
+training:
+  max_epochs: 1000
+  early_stopping_patience: 100
+  weight_decay: 0.0005
+  device: cuda
+
+hpo:
+  hidden_channels: [64, 128]
+  dropout: [0.3, 0.5]
+  lr: [0.001, 0.005]
+  gat_heads: 4
+

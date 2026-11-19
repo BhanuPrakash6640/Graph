@@ -1,0 +1,32 @@
+experiment: exp1_baselines
+
+data:
+  processed_dir: data/processed
+
+models:
+  - lr
+  - rf
+  - xgb
+
+feature_sets:
+  - local
+  - all
+
+splits:
+  - paper
+  - fc_24
+  - fc_29
+  - fc_34
+  - fc_39
+  - fc_44
+
+refit_splits:
+  - paper_refit
+
+seeds:
+  rf: [0, 1, 2, 3, 4]
+  xgb: [0, 1, 2, 3, 4]
+  lr: [0]
+
+latency_repeats: 20
+

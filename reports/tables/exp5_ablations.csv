@@ -1,0 +1,13 @@
+Ablation Dimension,Variant / Condition,PR-AUC (mean ± std),Δ PR-AUC vs Ref [95% CI],F1 (mean ± std)
+1. Features,"XGB (all features, 165d) [Reference]",0.8001 ± 0.0008,— [Reference],0.7991 ± 0.0025
+1. Features,"XGB (aggregated only, 72d)",0.6364 ± 0.0219,"-0.1494 [-0.2575, -0.0836]",0.5716 ± 0.0328
+1. Features,"GCN (all 2-layer undirected, 165d) [Reference]",0.6228 ± 0.0225,— [Reference],0.5941 ± 0.0504
+1. Features,"GCN (aggregated only, 72d)",0.4148 ± 0.0496,"-0.2081 [-0.2988, -0.1028]",0.4416 ± 0.0259
+2. Topology Only,"GCN (all 2-layer undirected, 165d) [Reference]",0.6228 ± 0.0225,— [Reference],0.5941 ± 0.0504
+2. Topology Only,"GCN (constant 1s, no features)",0.0764 ± 0.0009,"-0.5425 [-0.6902, -0.2976]",0.1030 ± 0.0576
+3. Neighbour Hops,"GCN 2-hop (2 layers, 165d) [Reference]",0.6228 ± 0.0225,— [Reference],0.5941 ± 0.0504
+3. Neighbour Hops,GCN 1-hop (1 layer),0.2029 ± 0.0130,"-0.4126 [-0.5259, -0.2707]",0.3135 ± 0.0182
+4. Edge Direction,GCN undirected (symmetrised) [Reference],0.6228 ± 0.0225,— [Reference],0.5941 ± 0.0504
+4. Edge Direction,GCN (directed edges),0.4655 ± 0.0274,"-0.1301 [-0.1762, -0.0460]",0.4573 ± 0.0302
+5. Temporal Dynamics,"EvolveGCN (evolving weights, 165d) [Reference]",0.2291 ± 0.0620,— [Reference],0.2359 ± 0.1228
+5. Temporal Dynamics,EvolveGCN (frozen weights),0.6193 ± 0.0154,"+0.2312 [+0.1558, +0.3075]",0.6107 ± 0.0173

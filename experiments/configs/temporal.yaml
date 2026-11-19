@@ -1,0 +1,37 @@
+experiment: exp2_temporal
+
+data:
+  processed_dir: data/processed
+
+models:
+  - evolvegcn
+
+feature_sets:
+  - local
+  - all
+
+splits:
+  - paper
+  - fc_24
+  - fc_29
+  - fc_34
+  - fc_39
+  - fc_44
+
+refit_splits:
+  - paper_refit
+
+seeds: [0, 1, 2, 3, 4]
+
+training:
+  max_epochs: 150
+  early_stopping_patience: 30
+  window_size: 5
+  weight_decay: 0.0005
+  device: cuda
+
+hpo:
+  hidden_channels: [64]
+  dropout: [0.3]
+  lr: [0.001, 0.005]
+

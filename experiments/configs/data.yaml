@@ -1,0 +1,22 @@
+data:
+  raw_dir: data/raw/elliptic_bitcoin_dataset
+  processed_dir: data/processed
+
+validation:
+  expected_time_steps: 49
+
+# Splits are defined here so EDA and Phase 2 use the same boundaries.
+protocols:
+  paper:                 # Weber et al. 2019: train 1-34, test 35-49
+    train_steps: [1, 34]
+    val_steps: [30, 34]  # carved from the end of the training window
+    test_steps: [35, 49]
+  forward_chaining:      # strict chronological protocol (Phase 2)
+    cuts: [24, 29, 34, 39, 44]
+    val_width: 5
+    test_width: 5
+
+eda:
+  out_dir: reports/eda
+
+seeds: [0, 1, 2, 3, 4]
